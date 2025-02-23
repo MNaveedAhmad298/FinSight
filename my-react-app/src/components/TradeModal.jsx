@@ -3,14 +3,30 @@ import { X } from 'lucide-react';
 
 function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState('BUY');
-  const userBalanceUSD = 700.005;
-  const userBalanceShares = 0.034;
+
+  // Example user balances
+  const userBalanceUSD = 700.005;     // How much USD the user has
+  const userBalanceShares = 0.034;   // How many shares/coins the user has
+
   // Format the market price to two decimals
   const price = currentPrice ? currentPrice.toFixed(2) : '0.00';
+
+  // Convert price to a number for calculations
+  const numericPrice = parseFloat(price) || 0;
+
+  // Calculate how many shares user can buy with their USD
+  const maxBuyShares = numericPrice > 0 ? userBalanceUSD / numericPrice : 0;
+
+  // Calculate how many USD user gets if they sell all their shares
+  const maxSellValueUSD = numericPrice * userBalanceShares;
+
+  // The user enters the total buy/sell amount here (in USD for buy, or ??? for sell)
   const [amount, setAmount] = useState('');
 
+  // If the modal is closed, don’t render anything
   if (!isOpen) return null;
 
+  // Determine color for the percent change
   const isPositive = changePercent >= 0;
   const changeColor = isPositive ? 'text-green-500' : 'text-red-500';
 
@@ -62,7 +78,7 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
 
       {/* Form Fields */}
       <div className="space-y-4 mb-4">
-        {/* Market Price (read-only) with "USD" on the right */}
+        {/* Market Price (read-only) */}
         <div className="bg-white/5 rounded-lg p-3 grid grid-cols-[120px_1fr] items-center">
           <div className="text-sm text-gray-400">Market Price</div>
           <div className="flex justify-end items-center space-x-1">
@@ -76,7 +92,7 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
           </div>
         </div>
 
-        {/* Total Field with placeholder, fixed USD, and restriction to two decimals */}
+        {/* Total Field */}
         <div className="bg-white/5 border-2 border-purple-600 rounded-lg p-3 grid grid-cols-[120px_1fr] items-center">
           <div className="text-sm text-gray-400">Total</div>
           <div className="flex justify-end items-center space-x-1">
@@ -92,7 +108,7 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
                 }
               }}
               onBlur={() => {
-                // Format to 2 decimals on blur if a valid number exists
+                // Format to 2 decimals on blur if a valid number
                 if (amount !== '') {
                   const numericVal = parseFloat(amount);
                   if (!isNaN(numericVal)) {
@@ -108,17 +124,36 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
       </div>
 
       {/* Available Info */}
-      <div className="mt-4 text-xs text-gray-400 flex justify-between">
+      <div className="mt-4 text-xs text-gray-400 space-y-1">
         {activeTab === 'BUY' ? (
-          <div>
-            Max Buy: {userBalanceShares.toFixed(3)} {symbol?.toUpperCase()}
-          </div>
+          <>
+            {/* Avbl (in USD) */}
+            <div className="flex justify-between items-center">
+              <span>Avbl</span>
+              <span>{userBalanceUSD.toFixed(3)} USD</span>
+            </div>
+            {/* Max Buy (in symbol) */}
+            <div className="flex justify-between items-center">
+              <span>Max Buy</span>
+              <span>
+                {maxBuyShares.toFixed(3)} {symbol?.toUpperCase()}
+              </span>
+            </div>
+          </>
         ) : (
           <>
-            <div>
-              Available: {userBalanceShares.toFixed(3)} {symbol?.toUpperCase()}
+            {/* Avbl (in shares) */}
+            <div className="flex justify-between items-center">
+              <span>Avbl</span>
+              <span>
+                {userBalanceShares.toFixed(3)} {symbol?.toUpperCase()}
+              </span>
             </div>
-            <div>Max Sell: ${userBalanceUSD.toFixed(3)} USD</div>
+            {/* Max Sell (in USD) */}
+            <div className="flex justify-between items-center">
+              <span>Max Sell</span>
+              <span>${(numericPrice * userBalanceShares).toFixed(2)} USD</span>
+            </div>
           </>
         )}
       </div>
