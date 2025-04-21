@@ -1,29 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 
 function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState('BUY');
+  
 
-  // Example user balances
-  const userBalanceUSD = 700.005;     // How much USD the user has
-  const userBalanceShares = 0.034;   // How many shares/coins the user has
+  // States for balances fetched from backend
+  const [userBalanceUSD, setUserBalanceUSD] = useState(0);
+  // userShares is an object: e.g., { AAPL: 0, GOOGL: 0 }
+  const [userShares, setUserShares] = useState({});
 
-  // Format the market price to two decimals
-  const price = currentPrice ? currentPrice.toFixed(2) : '0.00';
-
-  // Convert price to a number for calculations
-  const numericPrice = parseFloat(price) || 0;
-
-  // Calculate how many shares user can buy with their USD
-  const maxBuyShares = numericPrice > 0 ? userBalanceUSD / numericPrice : 0;
-
-  // Calculate how many USD user gets if they sell all their shares
-  const maxSellValueUSD = numericPrice * userBalanceShares;
-
-  // The user enters the total buy/sell amount here (in USD for buy, or ??? for sell)
+  // State for trade amount (for BUY: USD amount, for SELL: number of shares)
   const [amount, setAmount] = useState('');
 
-  // If the modal is closed, don’t render anything
+  // Format market price to two decimals and convert to number
+  const price = currentPrice ? currentPrice.toFixed(2) : '0.00';
+  const numericPrice = parseFloat(price) || 0;
+
+  // For BUY, calculate max shares you can buy with available USD
+  const maxBuyShares = numericPrice > 0 ? userBalanceUSD / numericPrice : 0;
+  // For SELL, available shares for the current symbol (defaulting to 0)
+  const availableSharesForSymbol = userShares[symbol] || 50;
+  const maxSellValueUSD = numericPrice * availableSharesForSymbol;
+
+  // Fetch balances from the backend when the modal opens
+  useEffect(() => {
+    if (isOpen) {
+      fetch('http://localhost:5000/api/balance')
+        .then(res => res.json())
+        .then(data => {
+          setUserBalanceUSD(data.usd);
+          // Expecting data.shares to be an object mapping stock symbols to share amounts
+          setUserShares(data.shares);
+        })
+        .catch(err => console.error('Failed to fetch balance:', err));
+    }
+  }, [isOpen]);
+
+  // Handle trade submission
+  const handleTradeSubmit = () => {
+    const payload = {
+      symbol,
+      tradeType: activeTab,
+      amount,
+      price: numericPrice,
+    };
+
+    fetch('http://localhost:5000/api/trade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          alert(`Trade failed: ${data.error}`);
+        } else {
+          alert(data.message);
+          // Update balances using values returned from backend
+          setUserBalanceUSD(data.usd);
+          setUserShares(data.shares);
+          setAmount(''); // Clear input on success
+        }
+      })
+      .catch(err => {
+        console.error('Trade API error:', err);
+        alert('Trade failed due to network error.');
+      });
+  };
+
   if (!isOpen) return null;
 
   // Determine color for the percent change
@@ -52,25 +97,13 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
       <div className="flex space-x-1 mb-4">
         <button
           onClick={() => setActiveTab('BUY')}
-          className={`
-            w-1/2 py-2 rounded-lg
-            ${activeTab === 'BUY'
-              ? 'bg-purple-600 text-white'
-              : 'bg-white/5 text-gray-300 hover:bg-white/10'
-            }
-          `}
+          className={`w-1/2 py-2 rounded-lg ${activeTab === 'BUY' ? 'bg-purple-600 text-white' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
         >
           Buy
         </button>
         <button
           onClick={() => setActiveTab('SELL')}
-          className={`
-            w-1/2 py-2 rounded-lg
-            ${activeTab === 'SELL'
-              ? 'bg-purple-600 text-white'
-              : 'bg-white/5 text-gray-300 hover:bg-white/10'
-            }
-          `}
+          className={`w-1/2 py-2 rounded-lg ${activeTab === 'SELL' ? 'bg-purple-600 text-white' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
         >
           Sell
         </button>
@@ -92,7 +125,7 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
           </div>
         </div>
 
-        {/* Total Field */}
+        {/* Total Field (for trade amount) */}
         <div className="bg-white/5 border-2 border-purple-600 rounded-lg p-3 grid grid-cols-[120px_1fr] items-center">
           <div className="text-sm text-gray-400">Total</div>
           <div className="flex justify-end items-center space-x-1">
@@ -102,13 +135,11 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
               value={amount}
               onChange={(e) => {
                 const val = e.target.value;
-                // Allow only numbers with up to 2 decimal places
                 if (/^\d*\.?\d{0,2}$/.test(val)) {
                   setAmount(val);
                 }
               }}
               onBlur={() => {
-                // Format to 2 decimals on blur if a valid number
                 if (amount !== '') {
                   const numericVal = parseFloat(amount);
                   if (!isNaN(numericVal)) {
@@ -123,36 +154,38 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
         </div>
       </div>
 
+      {/* Submit Trade Button */}
+      <div className="mt-4">
+        <button
+          onClick={handleTradeSubmit}
+          className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors font-semibold"
+        >
+          Submit Trade
+        </button>
+      </div>
+
       {/* Available Info */}
       <div className="mt-4 text-xs text-gray-400 space-y-1">
         {activeTab === 'BUY' ? (
           <>
-            {/* Avbl (in USD) */}
             <div className="flex justify-between items-center">
               <span>Avbl</span>
               <span>{userBalanceUSD.toFixed(3)} USD</span>
             </div>
-            {/* Max Buy (in symbol) */}
             <div className="flex justify-between items-center">
               <span>Max Buy</span>
-              <span>
-                {maxBuyShares.toFixed(3)} {symbol?.toUpperCase()}
-              </span>
+              <span>{maxBuyShares.toFixed(3)} {symbol?.toUpperCase()}</span>
             </div>
           </>
         ) : (
           <>
-            {/* Avbl (in shares) */}
             <div className="flex justify-between items-center">
               <span>Avbl</span>
-              <span>
-                {userBalanceShares.toFixed(3)} {symbol?.toUpperCase()}
-              </span>
+              <span>{availableSharesForSymbol.toFixed(3)} {symbol?.toUpperCase()}</span>
             </div>
-            {/* Max Sell (in USD) */}
             <div className="flex justify-between items-center">
               <span>Max Sell</span>
-              <span>${(numericPrice * userBalanceShares).toFixed(2)} USD</span>
+              <span>${maxSellValueUSD.toFixed(2)} USD</span>
             </div>
           </>
         )}
