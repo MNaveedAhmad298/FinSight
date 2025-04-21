@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
+import LoginPage from "./pages/Login"
+import SignUpPage from "./pages/Signup"
 import Prediction from "./pages/Prediction";
 import StockDetail from "./pages/StockDetail";
 import TradePage from "./pages/TradePage";
@@ -24,8 +26,13 @@ function App() {
         {/* Main Content with a different background color */}
         <div className="flex-1 bg-[#0D0E12] text-white overflow-auto relative">
           <Routes>
-          
-            <Route path="/" element={<Dashboard />} />
+    
+            <Route path="/" element={<LoginPage />} />
+            
+            <Route path="/signup" element={<SignUpPage />} />
+            
+            <Route path="/Dashboard" element={<Dashboard />} />
+            
             <Route path="/prediction" element={<Prediction />} />
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/details/:symbol" element={<StockDetail />} />
