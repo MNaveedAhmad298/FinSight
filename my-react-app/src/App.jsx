@@ -10,7 +10,8 @@ import StockDetail from "./pages/StockDetail";
 import TradePage from "./pages/TradePage";
 import Portfolio from "./pages/Portfolio";
 import Chat from "./components/Chat"; // Import the Chat component
-
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from  "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -28,10 +29,13 @@ function App() {
           <Routes>
     
             <Route path="/" element={<LoginPage />} />
+            <Route path="/login" element={<LoginPage />} />
             
             <Route path="/signup" element={<SignUpPage />} />
             
             <Route path="/Dashboard" element={<Dashboard />} />
+            <Route path="/forgotpassword" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             
             <Route path="/prediction" element={<Prediction />} />
             <Route path="/portfolio" element={<Portfolio />} />
