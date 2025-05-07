@@ -1,5 +1,4 @@
 # Logs
-logs
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,28 +6,77 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-
-# Python virtual environment
-backend/venv/
-backend/.env
-
-# Python cache files
-backend/__pycache__/
-backend/*.pyc
-
-
-node_modules
-dist
-dist-ssr
+# Node modules
+node_modules/
+dist/
+dist-ssr/
 *.local
+.build/
+.cache/
 
-# Editor directories and files
-.vscode/*
+# Python virtual environments (any level)
+venv/
+*/venv/
+env/
+*/env/
+.venv/
+*/.venv/
+
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python build artifacts
+build/
+develop-eggs/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+
+# Virtual environment configuration
+pyvenv.cfg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# dotenv files
+.env
+.env.*    # e.g., .env.local or .env.development
+
+# Pytest
+.cache/
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints
+
+# React/Vite/Next/Node build artifacts
+public/build/
+.next/
+out/
+
+# Static files (optional)
+staticfiles/
+static/
+
+# Editor & system files
+.vscode/
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# VS Code debug logs
+.vscode-test/

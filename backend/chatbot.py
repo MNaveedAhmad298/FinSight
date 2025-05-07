@@ -3,6 +3,7 @@ from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain.callbacks import StreamingStdOutCallbackHandler
 
+
 class FinSightAssistant:
     """
     FinSight Financial Assistant that generates concise, data-driven responses.

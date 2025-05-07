@@ -19,6 +19,26 @@ function TradePage() {
   // State for the chart data and selected period
   const [chartData, setChartData] = useState([]);
   const [chartPeriod, setChartPeriod] = useState("1D");
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [stockData, setStockData] = useState(null);
+
+  // Fetch stock details including name
+  useEffect(() => {
+    const fetchStockData = async () => {
+      try {
+        const response = await fetch("http://localhost:5000/api/stocks");
+        const stocks = await response.json();
+        const currentStock = stocks.find(s => s.symbol === symbol);
+        if (currentStock) {
+          setStockData(currentStock);
+        }
+      } catch (error) {
+        console.error("Error fetching stock data:", error);
+      }
+    };
+
+    fetchStockData();
+  }, [symbol]);
 
   // Fetch historical data for the selected symbol and period
   useEffect(() => {
@@ -44,7 +64,18 @@ function TradePage() {
     };
 
     fetchHistory();
+    // Fetch new data every minute
+    const interval = setInterval(fetchHistory, 60000);
+    return () => clearInterval(interval);
   }, [symbol, chartPeriod]);
+
+  // Update the clock every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // For demonstration, pretend these are dynamic (you can also update these based on live data)
   const urlParams = new URLSearchParams(window.location.search);
@@ -55,6 +86,27 @@ function TradePage() {
   // Control the TradeModal’s open/close
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Format the current time with timezone
+  const formattedTime = currentTime.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'short'
+  });
+
+  // Custom formatter for chart timestamps
+  const formatChartTime = (date) => {
+    if (chartPeriod === "1d") {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (chartPeriod === "5d") {
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } else {
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+  };
+
   return (
     <div
       className="p-8 text-white"
@@ -63,8 +115,8 @@ function TradePage() {
       {/* Top section: symbol, price, buy/sell */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold">{symbol?.toUpperCase()} (DJI)</h1>
-          <p className="text-sm text-gray-400">Dow Jones Industrial Average</p>
+          <h1 className="text-xl font-bold">{symbol?.toUpperCase()}</h1>
+          <p className="text-sm text-gray-400">{stockData?.name || 'Loading...'}</p>
         </div>
 
         {/* Buy / Sell Buttons that open the modal */}
@@ -98,7 +150,7 @@ function TradePage() {
           {changePercent >= 0 ? `+${changePercent}%` : `${changePercent}%`})
         </span>
       </div>
-      <p className="text-gray-400 text-sm mb-4">Oct 28, 10:00:56 PM UTC-4</p>
+      <p className="text-gray-400 text-sm mb-4">{formattedTime}</p>
 
       {/* Time Range Buttons */}
       <div className="flex space-x-2 mb-6">
@@ -126,22 +178,12 @@ function TradePage() {
             <XAxis
               dataKey="date"
               stroke="#9CA3AF"
-              tickFormatter={(date) =>
-                date.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              }
+              tickFormatter={formatChartTime}
             />
             <YAxis stroke="#9CA3AF" domain={["auto", "auto"]} />
             
             <Tooltip
-              labelFormatter={(date) =>
-                date.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              }
+              labelFormatter={formatChartTime}
               contentStyle={{
                 backgroundColor: "rgba(17,24,39,0.9)",
                 border: "1px solid rgba(255,255,255,0.1)",

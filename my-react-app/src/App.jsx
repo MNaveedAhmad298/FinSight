@@ -1,6 +1,6 @@
 import React from "react";
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import LoginPage from "./pages/Login"
@@ -15,40 +15,38 @@ import ResetPassword from  "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
+const AppContent = () => {
+  const location = useLocation();
+  const isAuthPage = ['/login', '/signup', '/forgotpassword', '/reset-password', '/'].includes(location.pathname);
+
+  return (
+    <div className="flex h-screen">
+      {!isAuthPage && <Sidebar />}
+      <div className="flex-1 bg-[#0D0E12] text-white overflow-auto relative">
+        <Routes>
+          <Route path="/" element={<LoginPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignUpPage />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/forgotpassword" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/prediction" element={<Prediction />} />
+          <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/details/:symbol" element={<StockDetail />} />
+          <Route path="/trade/:symbol" element={<TradePage />} />
+        </Routes>
+        <Chat />
+      </div>
+    </div>
+  );
+};
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-    <Router>
-      {/* Use flex to place Sidebar and Main Content side by side */}
-      <div className="flex h-screen">
-        {/* Sidebar with its own background color */}
-        <Sidebar />
-
-        {/* Main Content with a different background color */}
-        <div className="flex-1 bg-[#0D0E12] text-white overflow-auto relative">
-          <Routes>
-    
-            <Route path="/" element={<LoginPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            
-            <Route path="/signup" element={<SignUpPage />} />
-            
-            <Route path="/Dashboard" element={<Dashboard />} />
-            <Route path="/forgotpassword" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            
-            <Route path="/prediction" element={<Prediction />} />
-            <Route path="/portfolio" element={<Portfolio />} />
-            <Route path="/details/:symbol" element={<StockDetail />} />
-            <Route path="/trade/:symbol" element={<TradePage />} />
-            
-            {/* other routes */}
-          </Routes>
-          {/* Chat component fixed at bottom-right */}
-          <Chat />
-        </div>
-      </div>
-    </Router>
+      <Router>
+        <AppContent />
+      </Router>
     </QueryClientProvider>
   );
 }
