@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   LineChart,
@@ -18,28 +18,59 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import "../app.css";
+import { io } from "socket.io-client";
 
 const symbolToDomain = {
-  AAPL: "apple.com",
-  MSFT: "microsoft.com",
+  AAPL:  "apple.com",
+  MSFT:  "microsoft.com",
+  NVDA:  "nvidia.com",
+  AMZN:  "amazon.com",
+  AVGO:  "broadcom.com",
+  META:  "meta.com",
+  NFLX:  "netflix.com",
+  COST:  "costco.com",
+  TSLA:  "tesla.com",
   GOOGL: "google.com",
-  AMZN: "amazon.com",
-  META: "meta.com",
-  NVDA: "nvidia.com",
-  TSLA: "tesla.com",
-  JPM: "jpmorganchase.com",
-  V: "visa.com",
-  WMT: "walmart.com",
-  UNH: "unitedhealthgroup.com",
-  JNJ: "jnj.com",
-  MA: "mastercard.com",
-  PG: "pg.com",
-  HD: "homedepot.com",
-  BAC: "bankofamerica.com",
-  KO: "coca-cola.com",
-  DIS: "disney.com",
-  PFE: "pfizer.com",
-  CSCO: "cisco.com",
+  GOOG:  "google.com",
+  TMUS:  "t-mobile.com",
+  PLTR:  "palantir.com",
+  CSCO:  "cisco.com",
+  LIN:   "linde.com",
+  ISRG:  "intuitivesurgical.com",
+  PEP:   "pepsico.com",
+  INTU:  "intuit.com",
+  BKNG:  "bookingholdings.com",
+  ADBE:  "adobe.com",
+  AMD:   "amd.com",
+  AMGN:  "amgen.com",
+  QCOM:  "qualcomm.com",
+  TXN:   "ti.com",
+  HON:   "honeywell.com",
+  GILD:  "gilead.com",
+  VRTX:  "vrtx.com",
+  CMCSA: "comcast.com",
+  PANW:  "paloaltonetworks.com",
+  ADP:   "adp.com",
+  AMAT:  "appliedmaterials.com",
+  MELI:  "mercadolibre.com",
+  CRWD:  "crowdstrike.com",
+  ADI:   "analog.com",
+  SBUX:  "starbucks.com",
+  LRCX:  "lamresearch.com",
+  MSTR:  "microstrategy.com",
+  KLAC:  "kla.com",
+  MDLZ:  "mondelezinternational.com",
+  MU:    "micron.com",
+  INTC:  "intel.com",
+  APP:   "applovin.com",
+  CTAS:  "cintas.com",
+  CDNS:  "cadence.com",
+  ORLY:  "oreillyauto.com",
+  FTNT:  "fortinet.com",
+  DASH:  "doordash.com",
+  CEG:   "constellation.com",
+  SNPS:  "synopsys.com",
+  PDD:   "pinduoduo.com"
 };
 
 function Dashboard() {
@@ -48,44 +79,71 @@ function Dashboard() {
   const [chartData, setChartData] = useState([]);
   const [chartPeriod, setChartPeriod] = useState("1W");
   const [selectedSymbol, setSelectedSymbol] = useState("AAPL");
-  useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const response = await fetch(
-          `http://localhost:5000/api/history/${selectedSymbol}/${chartPeriod}`
-        );
-        const { data } = await response.json();
-        setChartData(
-          data.map((entry) => ({
-            time: new Date(entry.time).toLocaleString(),
-            value: entry.value,
-          }))
-        );
-      } catch (error) {
-        console.error("Error fetching history:", error);
-      }
-    };
+  const [chartDataCache, setChartDataCache] = useState({});
+  const [socket, setSocket] = useState(null);
+  const [connected, setConnected] = useState(false);
 
-    fetchHistory();
-  }, [selectedSymbol, chartPeriod]);
+  // Function to update stock price and calculate change
+  const updateStock = (symbol, price) => {
+    setStocks(prev => {
+      // Find the stock we need to update
+      const stockIndex = prev.findIndex(stock => stock.symbol === symbol);
+      
+      // If we don't have this stock, ignore the update
+      if (stockIndex === -1) return prev;
+      
+      // Make a copy of the stocks array
+      const newStocks = [...prev];
+      const stock = newStocks[stockIndex];
+      
+      // Calculate the percentage change
+      const oldPrice = stock.price;
+      const changePct = ((price - oldPrice) / oldPrice) * 100;
+      
+      // Update the stock
+      newStocks[stockIndex] = {
+        ...stock,
+        price: price,
+        change: changePct,
+        // Add a visual indicator for recent updates
+        recentlyUpdated: true
+      };
+      
+      // Clear the 'recentlyUpdated' flag after a short delay
+      setTimeout(() => {
+        setStocks(current => 
+          current.map(s => 
+            s.symbol === symbol ? { ...s, recentlyUpdated: false } : s
+          )
+        );
+      }, 2000);
+      
+      return newStocks;
+    });
+  };
 
-  // Fetch data from Flask API
+  // Fetch initial stock data from API
   useEffect(() => {
     const fetchStocks = async () => {
       try {
         const response = await fetch("http://localhost:5000/api/stocks");
+        
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+        
         const data = await response.json();
 
-        // Transform API data to match mock data structure
+        // Transform API data to match our structure
         const transformedData = data.map((stock) => ({
           symbol: stock.symbol,
-          name: stock.name,
-          price: stock.close,
-          change: stock.change,
+          name: stock.name || stock.symbol,
+          price: stock.price || 0,
+          change: stock.change || 0,
           volume: new Intl.NumberFormat("en-US", {
             notation: "compact",
             maximumFractionDigits: 1,
-          }).format(stock.volume),
+          }).format(stock.volume || 0),
           logo: symbolToDomain[stock.symbol]
             ? `https://logo.clearbit.com/${
                 symbolToDomain[stock.symbol]
@@ -94,17 +152,127 @@ function Dashboard() {
         }));
 
         setStocks(transformedData);
+        
+        // If we don't have an already selected symbol but we got stocks,
+        // select the first one by default
+        if (transformedData.length > 0 && !selectedSymbol) {
+          setSelectedSymbol(transformedData[0].symbol);
+        }
+        
         setLoading(false);
       } catch (error) {
         console.error("Error fetching stock data:", error);
+        
+        // If API fails, use empty array but mark as loaded
+        setStocks([]);
         setLoading(false);
       }
     };
-
+    
     fetchStocks();
-    const interval = setInterval(fetchStocks, 60000);
-    return () => clearInterval(interval);
   }, []);
+
+  // Set up WebSocket connection for live updates
+  useEffect(() => {
+    // Only set up socket if we have loaded initial stocks
+    if (loading) return;
+    
+    // Create socket connection
+    const newSocket = io("http://localhost:5000", {
+      transports: ["websocket"]  // force WebSocket transport
+    });
+    
+    // Socket event handlers
+    newSocket.on("connect", () => {
+      console.log("Socket.IO connected!");
+      setConnected(true);
+    });
+    
+    newSocket.on("stock_update", (data) => {
+      console.log("Received stock update:", data);
+      updateStock(data.symbol, data.price);
+    });
+    
+    newSocket.on("disconnect", () => {
+      console.log("Socket.IO disconnected.");
+      setConnected(false);
+    });
+    
+    newSocket.on("error", (error) => {
+      console.error("Socket.IO error:", error);
+    });
+    
+    // Store socket in state
+    setSocket(newSocket);
+    
+    // Clean up on unmount
+    return () => {
+      if (newSocket) {
+        newSocket.disconnect();
+      }
+    };
+  }, [loading]); // Only run when loading state changes
+
+  // Fetch chart data when selected symbol or period changes
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        // Show loading state
+        setLoading(true);
+        
+        // Check if we already have this data cached client-side
+        const cacheKey = `${selectedSymbol}-${chartPeriod}`;
+        if (chartDataCache[cacheKey]) {
+          // Use cached data if available
+          setChartData(chartDataCache[cacheKey]);
+          setLoading(false);
+          return;
+        }
+        
+        // Fetch from API if not cached
+        const response = await fetch(
+          `http://localhost:5000/api/history/${selectedSymbol}/${chartPeriod}`
+        );
+        
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+        
+        const { data } = await response.json();
+        
+        // Format the data
+        const formattedData = data.map((entry) => ({
+          time: new Date(entry.time).toLocaleString(),
+          value: entry.value,
+        }));
+        
+        // Update the state
+        setChartData(formattedData);
+        
+        // Cache the result client-side
+        setChartDataCache(prev => ({
+          ...prev,
+          [cacheKey]: formattedData
+        }));
+        
+      } catch (error) {
+        console.error("Error fetching history:", error);
+        // For demo purposes, create some mock data if API fails
+        const mockData = Array.from({ length: 24 }, (_, i) => ({
+          time: new Date(Date.now() - i * 3600000).toLocaleString(),
+          value: 150 + Math.random() * 10
+        })).reverse();
+        
+        setChartData(mockData);
+      } finally {
+        setLoading(false);
+      }
+    };
+  
+    if (selectedSymbol) {
+      fetchHistory();
+    }
+  }, [selectedSymbol, chartPeriod]);
 
   if (loading) {
     return (
@@ -152,7 +320,16 @@ function Dashboard() {
           >
             <div className="flex justify-between items-start mb-4">
               <div className="p-2 bg-white/5 rounded-lg">{stat.icon}</div>
-              <span className="text-sm text-gray-400">Updated just now</span>
+              <span className="text-sm text-gray-400">
+                {connected ? (
+                  <span className="flex items-center">
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span> 
+                    Live
+                  </span>
+                ) : (
+                  "Updated just now"
+                )}
+              </span>
             </div>
             <h3 className="text-lg font-medium mb-1">{stat.title}</h3>
             <div className="flex items-baseline gap-2">
@@ -170,22 +347,6 @@ function Dashboard() {
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-4">
               <h2 className="text-xl font-bold">Market Activity</h2>
-              {/* <div className="mb-6 flex justify-end">
-                <div className="flex items-center gap-4">
-                  <span className="text-gray-400">Select Stock:</span>
-                  <select
-                    value={selectedSymbol}
-                    onChange={(e) => setSelectedSymbol(e.target.value)}
-                    className="stock-selector"
-                  >
-                    {stocks.map(stock => (
-                      <option key={stock.symbol} value={stock.symbol}>
-                        {stock.symbol} - {stock.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div> */}
               <select
                 value={selectedSymbol}
                 onChange={(e) => setSelectedSymbol(e.target.value)}
@@ -214,7 +375,7 @@ function Dashboard() {
             </div>
           </div>
           <div className="flex space-x-2 mb-6">
-            {["1d", "5d", "1mo", "3mo"].map((range) => (
+            {["1d", "5d", "1mo", "3mo", "6mo", "1y"].map((range) => (
               <button
                 key={range}
                 onClick={() => setChartPeriod(range)}
@@ -225,6 +386,11 @@ function Dashboard() {
             ))}
           </div>
           <div className="h-[300px]">
+          {chartData.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-blue-400 animate-pulse">Loading chart data...</div>
+            </div>
+          ):(
             <ResponsiveContainer>
               <AreaChart data={chartData}>
                 <XAxis dataKey="time" tick={{ fill: "#6B7280" }} />
@@ -242,6 +408,7 @@ function Dashboard() {
                 />
               </AreaChart>
             </ResponsiveContainer>
+          )}
           </div>
         </div>
 
@@ -260,14 +427,17 @@ function Dashboard() {
               .map((stock) => (
                 <div
                   key={stock.symbol}
-                  className="flex items-center justify-between p-3 bg-white/5 rounded-lg"
+                  className={`
+                    flex items-center justify-between p-3 bg-white/5 rounded-lg
+                    ${stock.recentlyUpdated ? 'animate-pulse bg-blue-900/30' : ''}
+                  `}
                 >
                   <div>
                     <div className="font-medium">{stock.symbol}</div>
                     <div className="text-sm text-gray-400">{stock.name}</div>
                   </div>
                   <div className="text-right">
-                    <div className="font-medium">${stock.price.toFixed(2)}</div>
+                    <div className="font-medium">${stock.price?.toFixed(2) || "0.00"}</div>
                     <div
                       className={`
                         text-sm flex items-center gap-1
@@ -290,7 +460,15 @@ function Dashboard() {
 
       {/* Watchlist Table - Updated with real data */}
       <div className="rounded-xl p-6 mt-6 bg-white/5 backdrop-blur-md border border-white/10">
-        <h2 className="text-xl font-bold mb-4 text-gray-100">Watchlist</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-100">Watchlist</h2>
+          {connected && (
+            <div className="flex items-center text-sm text-green-400">
+              <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
+              Live Market Data
+            </div>
+          )}
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -307,7 +485,10 @@ function Dashboard() {
               {stocks.map((stock) => (
                 <tr
                   key={stock.symbol}
-                  className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                  className={`
+                    border-b border-white/5 hover:bg-white/5 transition-colors
+                    ${stock.recentlyUpdated ? 'bg-blue-900/20' : ''}
+                  `}
                 >
                   <td className="py-4 font-medium flex items-center">
                     {stock.logo ? (
@@ -327,17 +508,19 @@ function Dashboard() {
                     {stock.symbol}
                   </td>
                   <td className="py-4 text-gray-400">{stock.name}</td>
-                  <td className="py-4 text-right">${stock.price.toFixed(2)}</td>
+                  <td className={`py-4 text-right ${stock.recentlyUpdated ? 'text-white font-bold' : ''}`}>
+                    ${stock.price?.toFixed(2) || "0.00"}
+                  </td>
                   <td
                     className={`py-4 text-right ${
                       stock.change >= 0 ? "text-green-500" : "text-red-500"
                     }`}
                   >
                     {stock.change >= 0 ? "+" : ""}
-                    {Math.abs(stock.change).toFixed(2)}%
+                    {Math.abs(stock.change || 0).toFixed(2)}%
                   </td>
                   <td className="py-4 text-right text-gray-400">
-                    {stock.volume}
+                    {stock.volume || "0"}
                   </td>
                   <td className="py-4 text-right">
                     <Link
@@ -356,6 +539,5 @@ function Dashboard() {
     </div>
   );
 }
-
 
 export default Dashboard;

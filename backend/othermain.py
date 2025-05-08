@@ -4,11 +4,10 @@
 # import time
 # from flask_cors import CORS
 # from cachetools import TTLCache
-# from chatbot import FinSightAssistant
+
 # from pymongo import MongoClient
 # from portfolio import Portfolio
-# from predictor import StockPredictor
-# chatbot = FinSightAssistant()
+
 
 # # Database connection
 # connection_string = (
