@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   LineChart,
   BarChart3,
@@ -12,8 +12,22 @@ import {
 import { Link } from "react-router-dom";
 
 function Sidebar() {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const userData = JSON.parse(userStr);
+      // Get and format only the first name
+      if (userData.name) {
+        const firstName = userData.name.split(' ')[0];
+        userData.name = firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+      }
+      setUser(userData);
+    }
+  }, []);
+
   return (
-    // Give the sidebar a separate background color or gradient
     <div className="w-72 bg-[#1F2128] p-6 flex flex-col text-white">
       <div className="flex items-center gap-2 mb-8">
         <LineChart className="w-8 h-8 text-blue-500" />
@@ -31,7 +45,7 @@ function Sidebar() {
 
       <nav className="space-y-2">
         {[
-          { icon: <BarChart3 />, label: "Dashboard", path: "/" },
+          { icon: <BarChart3 />, label: "Dashboard", path: "/dashboard" },
           { icon: <Wallet />, label: "Portfolio", path: "/portfolio" },
           { icon: <Brain />, label: "AI Prediction", path: "/prediction" },
           { icon: <Robot />, label: "Trade Simulator", path: "/simulator" },
@@ -53,20 +67,19 @@ function Sidebar() {
           <span>Settings</span>
         </button>
 
-        <div className="flex items-center gap-4 mt-4 p-4 rounded-lg glass-effect">
-          <div className="relative">
+        <div className="flex items-center gap-3 mt-4 p-4 rounded-lg glass-effect">
+          <div className="relative flex-shrink-0">
             <img
               src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop&crop=faces"
               alt="Profile"
-              className="w-10 h-10 rounded-full"
+              className="w-10 h-10 rounded-full object-cover ring-2 ring-white/10"
             />
             <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-[#1F2128]" />
           </div>
-          <div>
-            <p className="font-medium">John Doe</p>
-            <p className="text-sm text-gray-400">Premium Plan</p>
-          </div>
-          <Bell className="ml-auto w-5 h-5 text-gray-400" />
+          <p className="font-semibold text-base whitespace-nowrap overflow-hidden overflow-ellipsis">
+            {user?.name || 'Loading...'}
+          </p>
+          <Bell className="ml-auto flex-shrink-0 w-5 h-5 text-gray-400" />
         </div>
       </div>
     </div>

@@ -3,7 +3,8 @@ import { X } from 'lucide-react';
 
 function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState('BUY');
-  
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   // States for balances fetched from backend
   const [userBalanceUSD, setUserBalanceUSD] = useState(0);
@@ -20,53 +21,83 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
   // For BUY, calculate max shares you can buy with available USD
   const maxBuyShares = numericPrice > 0 ? userBalanceUSD / numericPrice : 0;
   // For SELL, available shares for the current symbol (defaulting to 0)
-  const availableSharesForSymbol = userShares[symbol] || 50;
+  const availableSharesForSymbol = userShares[symbol] || 0;
   const maxSellValueUSD = numericPrice * availableSharesForSymbol;
+
+  // Get auth token for requests
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : ''
+    };
+  };
 
   // Fetch balances from the backend when the modal opens
   useEffect(() => {
     if (isOpen) {
-      fetch('http://localhost:5000/api/balance')
+      setError(''); // Clear any previous errors
+      fetch('http://localhost:5000/api/balance', {
+        headers: getAuthHeaders()
+      })
         .then(res => res.json())
         .then(data => {
-          setUserBalanceUSD(data.usd);
-          // Expecting data.shares to be an object mapping stock symbols to share amounts
-          setUserShares(data.shares);
+          if (data.error) {
+            setError(data.error);
+          } else {
+            setUserBalanceUSD(data.usd);
+            // Expecting data.shares to be an object mapping stock symbols to share amounts
+            setUserShares(data.shares);
+          }
         })
-        .catch(err => console.error('Failed to fetch balance:', err));
+        .catch(err => {
+          console.error('Failed to fetch balance:', err);
+          setError('Failed to load account balance');
+        });
     }
   }, [isOpen]);
 
   // Handle trade submission
-  const handleTradeSubmit = () => {
+  const handleTradeSubmit = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      setError('Please enter a valid amount');
+      return;
+    }
+
+    setError('');
+    setLoading(true);
+
     const payload = {
       symbol,
       tradeType: activeTab,
-      amount,
+      amount: parseFloat(amount),
       price: numericPrice,
     };
 
-    fetch('http://localhost:5000/api/trade', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) {
-          alert(`Trade failed: ${data.error}`);
-        } else {
-          alert(data.message);
-          // Update balances using values returned from backend
-          setUserBalanceUSD(data.usd);
-          setUserShares(data.shares);
-          setAmount(''); // Clear input on success
-        }
-      })
-      .catch(err => {
-        console.error('Trade API error:', err);
-        alert('Trade failed due to network error.');
+    try {
+      const response = await fetch('http://localhost:5000/api/trade', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
       });
+
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Trade failed');
+      }
+
+      // Update balances using values returned from backend
+      setUserBalanceUSD(data.usd);
+      setUserShares(data.shares);
+      setAmount(''); // Clear input on success
+      onClose(); // Only close on success
+    } catch (err) {
+      console.error('Trade API error:', err);
+      setError(err.message || 'Trade failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -84,6 +115,12 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
           <X className="w-5 h-5 text-gray-400 hover:text-gray-200" />
         </button>
       </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-sm">
+          {error}
+        </div>
+      )}
 
       {/* Symbol + Price/Change */}
       <div className="flex items-center justify-between mb-2">
@@ -158,9 +195,10 @@ function TradeModal({ symbol, currentPrice, changePercent, isOpen, onClose }) {
       <div className="mt-4">
         <button
           onClick={handleTradeSubmit}
-          className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors font-semibold"
+          disabled={loading}
+          className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Submit Trade
+          {loading ? 'Processing...' : 'Submit Trade'}
         </button>
       </div>
 

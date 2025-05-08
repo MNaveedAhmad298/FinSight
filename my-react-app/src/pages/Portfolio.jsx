@@ -1,171 +1,202 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const symbolToDomain = {
   AAPL: 'apple.com',
   MSFT: 'microsoft.com',
   GOOGL: 'google.com',
   AMZN: 'amazon.com',
+  META: 'meta.com',
+  NVDA: 'nvidia.com',
+  TSLA: 'tesla.com',
+  JPM: 'jpmorganchase.com',
+  V: 'visa.com',
+  WMT: 'walmart.com',
+  UNH: 'unitedhealthgroup.com',
+  JNJ: 'jnj.com',
+  MA: 'mastercard.com',
+  PG: 'pg.com',
+  HD: 'homedepot.com',
+  BAC: 'bankofamerica.com',
+  KO: 'coca-cola.com',
+  PFE: 'pfizer.com',
+  CSCO: 'cisco.com'
 };
 
 function Portfolio() {
-  // Example portfolio stats
-  const portfolioStats = {
-    totalValue: 125430.5,
-    dailyProfit: 1250.0,
-    overallReturn: 8.5,
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [portfolioData, setPortfolioData] = useState({
+    totalValue: 0,
+    dailyProfit: 0,
+    overallReturn: 0,
+    holdings: []
+  });
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return null;
+    }
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
   };
 
-  // Example holdings
-  const holdings = [
-    {
-      symbol: 'AAPL',
-      name: 'Apple Inc.',
-      shares: 50,
-      avgPrice: 150.0,
-      currentPrice: 175.84,
-      change: 1.72,
-      totalValue: 8792,
-    },
-    {
-      symbol: 'GOOGL',
-      name: 'Alphabet Inc.',
-      shares: 10,
-      avgPrice: 2400,
-      currentPrice: 2800,
-      change: 2.5,
-      totalValue: 28000,
-    },
-    {
-      symbol: 'AMZN',
-      name: 'Amazon.com Inc.',
-      shares: 5,
-      avgPrice: 3300,
-      currentPrice: 3400,
-      change: -1.2,
-      totalValue: 17000,
-    },
-  ];
+  useEffect(() => {
+    const fetchPortfolio = async () => {
+      try {
+        setLoading(true);
+        const headers = getAuthHeaders();
+        if (!headers) return;
+
+        const response = await fetch('http://localhost:5000/portfolio', {
+          headers
+        });
+        
+        if (response.status === 401) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          navigate('/login');
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch portfolio data');
+        }
+
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(data.error);
+        }
+
+        setPortfolioData({
+          totalValue: data.totalValue,
+          dailyProfit: data.dailyProfit,
+          overallReturn: data.overallReturn,
+          holdings: data.holdings.map(h => ({
+            symbol: h.stock_symbol,
+            name: h.stock_name,
+            shares: h.quantity,
+            avgPrice: h.average_price,
+            currentPrice: h.current_price,
+            change: ((h.current_price - h.average_price) / h.average_price * 100),
+            totalValue: h.total_value
+          }))
+        });
+      } catch (err) {
+        console.error('Error fetching portfolio:', err);
+        setError(err.message || 'Failed to load portfolio data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPortfolio();
+    const interval = setInterval(fetchPortfolio, 60000);
+    return () => clearInterval(interval);
+  }, [navigate]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 p-8 overflow-auto flex items-center justify-center">
+        <div className="text-blue-400 animate-pulse">
+          Loading portfolio data...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 p-8 overflow-auto flex items-center justify-center">
+        <div className="text-red-400">
+          {error}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8">
-      {/* Title and Subtitle */}
       <h1 className="text-3xl font-bold mb-2">Portfolio</h1>
       <p className="text-gray-400 mb-8">Your trading portfolio at a glance</p>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-3 gap-6 mb-8">
-        {/* Total Portfolio Value */}
-        <div className="
-          rounded-xl p-6
-          bg-white/5 backdrop-blur-md border border-white/10
-          shadow-[0_0_15px_rgba(59,130,246,0.15)]
-        ">
+        <div className="rounded-xl p-6 bg-white/5 backdrop-blur-md border border-white/10 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
           <p className="text-base text-gray-400 mb-2">Total Portfolio Value</p>
           <p className="text-3xl font-bold">
-            ${portfolioStats.totalValue.toLocaleString()}
+            ${portfolioData.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
 
-        {/* Today's Profit/Loss */}
-        <div className="
-          rounded-xl p-6
-          bg-white/5 backdrop-blur-md border border-white/10
-          shadow-[0_0_15px_rgba(59,130,246,0.15)]
-        ">
+        <div className="rounded-xl p-6 bg-white/5 backdrop-blur-md border border-white/10 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
           <p className="text-base text-gray-400 mb-2">Today's Profit/Loss</p>
-          <p
-            className={`text-3xl font-bold ${
-              portfolioStats.dailyProfit >= 0 ? 'text-green-500' : 'text-red-500'
-            }`}
-          >
-            {portfolioStats.dailyProfit >= 0
-              ? `+$${portfolioStats.dailyProfit.toLocaleString()}`
-              : `-$${Math.abs(portfolioStats.dailyProfit).toLocaleString()}`}
+          <p className={`text-3xl font-bold ${portfolioData.dailyProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {portfolioData.dailyProfit >= 0 ? '+' : ''}${portfolioData.dailyProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
 
-        {/* Overall Return */}
-        <div className="
-          rounded-xl p-6
-          bg-white/5 backdrop-blur-md border border-white/10
-          shadow-[0_0_15px_rgba(59,130,246,0.15)]
-        ">
+        <div className="rounded-xl p-6 bg-white/5 backdrop-blur-md border border-white/10 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
           <p className="text-base text-gray-400 mb-2">Overall Return</p>
-          <p
-            className={`text-3xl font-bold ${
-              portfolioStats.overallReturn >= 0 ? 'text-green-500' : 'text-red-500'
-            }`}
-          >
-            {portfolioStats.overallReturn >= 0
-              ? `+${portfolioStats.overallReturn}%`
-              : `${portfolioStats.overallReturn}%`}
+          <p className={`text-3xl font-bold ${portfolioData.overallReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {portfolioData.overallReturn >= 0 ? '+' : ''}{portfolioData.overallReturn.toFixed(2)}%
           </p>
         </div>
       </div>
 
-      {/* Holdings Table */}
-      <div className="rounded-xl p-6 bg-white/5 backdrop-blur-md border border-white/10">
-        <h2 className="text-xl font-bold mb-4">Holdings</h2>
-        <div className="overflow-x-auto">
+      {portfolioData.holdings.length > 0 ? (
+        <div className="rounded-xl overflow-hidden bg-white/5 backdrop-blur-md border border-white/10">
           <table className="w-full">
-            <thead>
-              <tr className="text-gray-400 border-b border-white/10">
-                <th className="pb-4 text-left">Asset</th>
-                <th className="pb-4 text-left">Shares</th>
-                <th className="pb-4 text-right">Avg Price</th>
-                <th className="pb-4 text-right">Current Price</th>
-                <th className="pb-4 text-right">Change</th>
-                <th className="pb-4 text-right">Total Value</th>
+            <thead className="bg-white/5">
+              <tr>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Symbol</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Name</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Shares</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Avg Price</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Current Price</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Change</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Value</th>
               </tr>
             </thead>
-            <tbody>
-              {holdings.map((holding, idx) => {
-                const domain = symbolToDomain[holding.symbol] || '';
-                const logoUrl = domain
-                  ? `https://logo.clearbit.com/${domain}?size=64`
-                  : null;
-
-                return (
-                  <tr key={idx} className="border-b border-white/5">
-                    <td className="py-4 font-medium">
-                      <div className="flex items-center gap-2">
-                        {logoUrl ? (
-                          <img
-                            src={logoUrl}
-                            alt={holding.symbol}
-                            className="w-6 h-6 rounded-full"
-                          />
-                        ) : (
-                          <div className="w-6 h-6 rounded-full bg-gray-500 flex items-center justify-center text-xs">
-                            {holding.symbol.slice(0, 1)}
-                          </div>
-                        )}
-                        <div>
-                          <div>{holding.symbol}</div>
-                          <div className="text-sm text-gray-400">{holding.name}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 text-left">{holding.shares}</td>
-                    <td className="py-4 text-right">${holding.avgPrice.toFixed(2)}</td>
-                    <td className="py-4 text-right">${holding.currentPrice.toFixed(2)}</td>
-                    <td
-                      className={`py-4 text-right ${
-                        holding.change >= 0 ? 'text-green-500' : 'text-red-500'
-                      }`}
-                    >
-                      {holding.change >= 0 ? `+${holding.change}%` : `${holding.change}%`}
-                    </td>
-                    <td className="py-4 text-right">
-                      ${holding.totalValue.toLocaleString()}
-                    </td>
-                  </tr>
-                );
-              })}
+            <tbody className="divide-y divide-white/5">
+              {portfolioData.holdings.map((holding) => (
+                <tr key={holding.symbol} className="hover:bg-white/5">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={`https://logo.clearbit.com/${symbolToDomain[holding.symbol]}`}
+                        alt={holding.symbol}
+                        className="w-6 h-6 rounded"
+                        onError={(e) => {
+                          e.target.src = 'https://via.placeholder.com/24?text=' + holding.symbol;
+                        }}
+                      />
+                      {holding.symbol}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-gray-300">{holding.name}</td>
+                  <td className="px-6 py-4 text-right">{holding.shares}</td>
+                  <td className="px-6 py-4 text-right">${holding.avgPrice.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-right">${holding.currentPrice.toFixed(2)}</td>
+                  <td className={`px-6 py-4 text-right ${holding.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {holding.change >= 0 ? '+' : ''}{holding.change.toFixed(2)}%
+                  </td>
+                  <td className="px-6 py-4 text-right">${holding.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-      </div>
+      ) : (
+        <div className="text-center py-8 text-gray-400">
+          <p>No holdings in your portfolio yet.</p>
+          <p className="mt-2">Start trading to build your portfolio!</p>
+        </div>
+      )}
     </div>
   );
 }
