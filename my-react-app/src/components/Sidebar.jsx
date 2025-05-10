@@ -26,7 +26,8 @@ function Sidebar() {
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [fundsAmount, setFundsAmount] = useState("");
   const [activeSettingsTab, setActiveSettingsTab] = useState("profile");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [isFundsLoading, setIsFundsLoading] = useState(false);
   const [initialNickname, setInitialNickname] = useState("");
   const [error, setError] = useState("");
   const [showError, setShowError] = useState(false);
@@ -98,7 +99,7 @@ function Sidebar() {
 
   // Handle profile save
   const handleProfileSave = async () => {
-    setIsLoading(true);
+    setIsProfileLoading(true);
     try {
       const formData = new FormData();
       formData.append("nickname", nickname);
@@ -125,7 +126,7 @@ function Sidebar() {
       setError(error.message || "Failed to update profile");
       setShowError(true);
     } finally {
-      setIsLoading(false);
+      setIsProfileLoading(false);
     }
   };
 
@@ -138,7 +139,10 @@ function Sidebar() {
 
   // Handle funds request
   const handleFundsRequest = async () => {
-    setIsLoading(true);
+    const savedFundsAmount = fundsAmount;
+    setFundsAmount("");
+    
+    setIsFundsLoading(true);
     try {
       const response = await fetch("http://localhost:5000/api/request-funds", {
         method: "POST",
@@ -146,17 +150,18 @@ function Sidebar() {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ amount: parseFloat(fundsAmount) })
+        body: JSON.stringify({ amount: parseFloat(savedFundsAmount) })
       });
 
       if (!response.ok) throw new Error("Failed to request funds");
-
-      setFundsAmount("");
-      setShowSettingsModal(false);
     } catch (error) {
       console.error("Funds request error:", error);
+      // Restore the amount if request fails
+      setFundsAmount(savedFundsAmount);
+      setError(error.message || "Failed to request funds");
+      setShowError(true);
     } finally {
-      setIsLoading(false);
+      setIsFundsLoading(false);
     }
   };
 
@@ -345,10 +350,10 @@ function Sidebar() {
                 <div className="flex gap-3 justify-end mt-4">
                   <button
                     onClick={handleProfileSave}
-                    disabled={isLoading || !hasChanges()}
+                    disabled={isProfileLoading || !hasChanges()}
                     className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors text-white disabled:opacity-50"
                   >
-                    {isLoading ? "Saving..." : "Save Changes"}
+                    {isProfileLoading ? "Saving..." : "Save Changes"}
                   </button>
                 </div>
               </div>
@@ -384,10 +389,10 @@ function Sidebar() {
                 <div className="flex gap-3 justify-end mt-4">
                   <button
                     onClick={handleFundsRequest}
-                    disabled={isLoading || !fundsAmount || parseFloat(fundsAmount) <= 0}
+                    disabled={isFundsLoading || !fundsAmount || parseFloat(fundsAmount) <= 0}
                     className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors text-white disabled:opacity-50"
                   >
-                    {isLoading ? "Requesting..." : "Request Funds"}
+                    {isFundsLoading ? "Requesting..." : "Request Funds"}
                   </button>
                 </div>
               </div>
