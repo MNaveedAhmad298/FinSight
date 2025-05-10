@@ -48,6 +48,50 @@ function Dashboard() {
   const [chartData, setChartData] = useState([]);
   const [chartPeriod, setChartPeriod] = useState("1W");
   const [selectedSymbol, setSelectedSymbol] = useState("AAPL");
+  const [portfolioData, setPortfolioData] = useState({
+    totalValue: 0,
+    dailyProfit: 0,
+    totalValueChange: 0,
+    dailyProfitChange: 0
+  });
+
+  // Get auth headers for API calls
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : ''
+    };
+  };
+
+  // Fetch portfolio data
+  useEffect(() => {
+    const fetchPortfolio = async () => {
+      try {
+        const headers = getAuthHeaders();
+        const response = await fetch('http://localhost:5000/portfolio', {
+          headers
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setPortfolioData({
+            totalValue: data.totalValue,
+            dailyProfit: data.dailyProfit,
+            totalValueChange: data.overallReturn,
+            dailyProfitChange: (data.dailyProfit / (data.totalValue - data.dailyProfit)) * 100
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching portfolio:', error);
+      }
+    };
+
+    fetchPortfolio();
+    const interval = setInterval(fetchPortfolio, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const fetchHistory = async () => {
       try {
@@ -122,17 +166,19 @@ function Dashboard() {
         {[
           {
             title: "Portfolio Value",
-            value: "$125,566.77",
-            change: "+2.5%",
+            value: `$${portfolioData.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            change: `${portfolioData.totalValueChange >= 0 ? '+' : ''}${portfolioData.totalValueChange.toFixed(2)}%`,
             period: "vs last week",
             icon: <LineChart className="w-6 h-6 text-blue-500" />,
+            isPositive: portfolioData.totalValueChange >= 0
           },
           {
-            title: "Today's Profit",
-            value: "+$3,204.75",
-            change: "+1.8%",
+            title: "Today's Profit/Loss",
+            value: `${portfolioData.dailyProfit >= 0 ? '+' : ''}$${portfolioData.dailyProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            change: `${portfolioData.dailyProfitChange >= 0 ? '+' : ''}${portfolioData.dailyProfitChange.toFixed(2)}%`,
             period: "today",
             icon: <Wallet className="w-6 h-6 text-green-500" />,
+            isPositive: portfolioData.dailyProfit >= 0
           },
           {
             title: "Total Investment",
@@ -140,6 +186,7 @@ function Dashboard() {
             change: "+4.3%",
             period: "vs last month",
             icon: <BarChart3 className="w-6 h-6 text-blue-500" />,
+            isPositive: true
           },
         ].map((stat, index) => (
           <div
@@ -156,8 +203,8 @@ function Dashboard() {
             </div>
             <h3 className="text-lg font-medium mb-1">{stat.title}</h3>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold">{stat.value}</span>
-              <span className="text-green-500 text-sm">{stat.change}</span>
+              <span className={`text-2xl font-bold ${stat.isPositive ? '' : 'text-red-500'}`}>{stat.value}</span>
+              <span className={stat.isPositive ? 'text-green-500 text-sm' : 'text-red-500 text-sm'}>{stat.change}</span>
             </div>
             <span className="text-sm text-gray-400">{stat.period}</span>
           </div>

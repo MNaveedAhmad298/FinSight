@@ -31,6 +31,7 @@ function Portfolio() {
     totalValue: 0,
     dailyProfit: 0,
     overallReturn: 0,
+    availableBalance: 0,
     holdings: []
   });
 
@@ -77,13 +78,14 @@ function Portfolio() {
           totalValue: data.totalValue,
           dailyProfit: data.dailyProfit,
           overallReturn: data.overallReturn,
+          availableBalance: data.availableBalance,
           holdings: data.holdings.map(h => ({
             symbol: h.stock_symbol,
             name: h.stock_name,
             shares: h.quantity,
-            avgPrice: h.average_price,
             currentPrice: h.current_price,
-            change: ((h.current_price - h.average_price) / h.average_price * 100),
+            dailyPnL: (h.current_price - h.previous_close) * h.quantity,
+            change: ((h.current_price - h.previous_close) / h.previous_close * 100),
             totalValue: h.total_value
           }))
         });
@@ -136,14 +138,15 @@ function Portfolio() {
         <div className="rounded-xl p-6 bg-white/5 backdrop-blur-md border border-white/10 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
           <p className="text-base text-gray-400 mb-2">Today's Profit/Loss</p>
           <p className={`text-3xl font-bold ${portfolioData.dailyProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            {portfolioData.dailyProfit >= 0 ? '+' : ''}${portfolioData.dailyProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {portfolioData.dailyProfit >= 0 ? '+' : ''}{`$${Math.abs(portfolioData.dailyProfit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `}
+            ({((portfolioData.dailyProfit / (portfolioData.totalValue - portfolioData.dailyProfit)) * 100).toFixed(2)}%)
           </p>
         </div>
 
         <div className="rounded-xl p-6 bg-white/5 backdrop-blur-md border border-white/10 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
-          <p className="text-base text-gray-400 mb-2">Overall Return</p>
-          <p className={`text-3xl font-bold ${portfolioData.overallReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            {portfolioData.overallReturn >= 0 ? '+' : ''}{portfolioData.overallReturn.toFixed(2)}%
+          <p className="text-base text-gray-400 mb-2">Available Balance</p>
+          <p className="text-3xl font-bold">
+            ${portfolioData.availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
       </div>
@@ -156,8 +159,8 @@ function Portfolio() {
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Symbol</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Name</th>
                 <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Shares</th>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Avg Price</th>
                 <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Current Price</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Daily PnL</th>
                 <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Change</th>
                 <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">Value</th>
               </tr>
@@ -180,8 +183,10 @@ function Portfolio() {
                   </td>
                   <td className="px-6 py-4 text-gray-300">{holding.name}</td>
                   <td className="px-6 py-4 text-right">{holding.shares}</td>
-                  <td className="px-6 py-4 text-right">${holding.avgPrice.toFixed(2)}</td>
                   <td className="px-6 py-4 text-right">${holding.currentPrice.toFixed(2)}</td>
+                  <td className={`px-6 py-4 text-right ${holding.dailyPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {holding.dailyPnL >= 0 ? '+' : ''}{`$${Math.abs(holding.dailyPnL).toFixed(2)}`}
+                  </td>
                   <td className={`px-6 py-4 text-right ${holding.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                     {holding.change >= 0 ? '+' : ''}{holding.change.toFixed(2)}%
                   </td>

@@ -17,6 +17,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from bson import ObjectId
+import base64
 
 load_dotenv()
 chatbot = FinSightAssistant()
@@ -155,14 +156,16 @@ def signup():
         "passwordHash": hashed_password,
         "role": "student",
         "emailVerified": False,
-        "registeredAt": datetime.datetime.utcnow()
+        "registeredAt": datetime.datetime.utcnow(),
+        "nickname": name,  # Initialize nickname with name
+        "avatar": None     # Initialize empty avatar
     }
 
-    users_collection.insert_one(user)
+    result = users_collection.insert_one(user)
     
     # Create an initial portfolio for the new user with some starting balance
     db.portfolios.insert_one({
-        "user_id": user["_id"],
+        "user_id": result.inserted_id,
         "available_balance": 10000.00  # Starting with $10,000 virtual money
     })
 
@@ -188,7 +191,9 @@ def login():
             "id": str(user["_id"]),
             "name": user["name"],
             "email": user["email"],
-            "role": user["role"]
+            "role": user["role"],
+            "nickname": user.get("nickname", user["name"]),
+            "avatar": user.get("avatar")
         }
 
         return jsonify({"token": token, "user": user_data}), 200
@@ -445,6 +450,47 @@ def predict_stock():
     
     except Exception as e:
         return jsonify({"error": f"Error processing request: {e}"}), 500
+
+@app.route('/api/profile', methods=['PUT'])
+@token_required
+def update_profile(current_user):
+    try:
+        data = request.form
+        nickname = data.get('nickname')
+        avatar_file = request.files.get('avatar')
+        
+        update_data = {}
+        
+        if nickname:
+            update_data['nickname'] = nickname
+            
+        if avatar_file:
+            # Read the image file and encode it as base64
+            avatar_base64 = base64.b64encode(avatar_file.read()).decode('utf-8')
+            update_data['avatar'] = avatar_base64
+            
+        if update_data:
+            users_collection.update_one(
+                {'_id': current_user['_id']},
+                {'$set': update_data}
+            )
+            
+            # Get updated user data
+            updated_user = users_collection.find_one({'_id': current_user['_id']})
+            return jsonify({
+                'id': str(updated_user['_id']),
+                'name': updated_user.get('name'),
+                'email': updated_user.get('email'),
+                'nickname': updated_user.get('nickname'),
+                'avatar': updated_user.get('avatar'),
+                'role': updated_user.get('role')
+            })
+            
+        return jsonify({'message': 'No changes to update'}), 400
+        
+    except Exception as e:
+        print(f"Error updating profile: {e}")
+        return jsonify({'error': 'Failed to update profile'}), 500
 
 if __name__ == '__main__':
     update_thread = threading.Thread(target=update_stock_data)
