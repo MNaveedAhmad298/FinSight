@@ -13,6 +13,7 @@ import {
   X,
   Upload,
   DollarSign,
+  Menu,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -31,6 +32,7 @@ function Sidebar() {
   const [initialNickname, setInitialNickname] = useState("");
   const [error, setError] = useState("");
   const [showError, setShowError] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(window.innerWidth < 1024);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -45,6 +47,15 @@ function Sidebar() {
         setAvatarPreview(`data:image/jpeg;base64,${userData.avatar}`);
       }
     }
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSidebarCollapsed(window.innerWidth < 1024);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleSignOutClick = () => {
@@ -167,90 +178,129 @@ function Sidebar() {
 
   return (
     <>
-      <div className="w-72 bg-[#1F2128] p-6 flex flex-col text-white">
-        <div className="flex items-center gap-2 mb-8">
-          <LineChart className="w-8 h-8 text-blue-500" />
-          <span className="text-2xl font-bold">FinSight</span>
+      {/* Mobile header - Only visible on small screens */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-[#1F2128] border-b border-white/10 flex items-center justify-between px-4 z-[60]">
+        <div className="flex items-center gap-2">
+          <LineChart className="w-6 h-6 text-blue-500" />
+          <span className="text-xl font-bold text-white">FinSight</span>
         </div>
+        <button
+          onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+      </div>
 
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <input
-            type="text"
-            placeholder="Search stocks..."
-            className="w-full bg-white/5 rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+      {/* Overlay for mobile - Only visible when sidebar is open on mobile */}
+      {!isSidebarCollapsed && (
+        <div 
+          className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+          onClick={() => setIsSidebarCollapsed(true)}
+        />
+      )}
 
-        <nav className="space-y-2">
-          {[
-            { icon: <BarChart3 />, label: "Dashboard", path: "/dashboard" },
-            { icon: <Wallet />, label: "Portfolio", path: "/portfolio" },
-            { icon: <Brain />, label: "AI Prediction", path: "/prediction" },
-            { icon: <Robot />, label: "Trade Simulator", path: "/simulator" },
-          ].map((item, index) => (
-            <Link
-              key={index}
-              to={item.path}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-white/5 transition-all hover:translate-x-1"
+      {/* Sidebar Container */}
+      <div className={`fixed lg:static h-full z-[51] transition-transform duration-300 right-0 ${
+        isSidebarCollapsed ? 'translate-x-full lg:translate-x-0' : 'translate-x-0'
+      }`}>
+        <div className="w-[280px] lg:w-72 bg-[#1F2128] h-full p-4 sm:p-6 flex flex-col text-white overflow-y-auto">
+          {/* Logo - Only visible on desktop */}
+          <div className="hidden lg:flex items-center gap-2 mb-6 sm:mb-8">
+            <LineChart className="w-6 h-6 sm:w-8 sm:h-8 text-blue-500" />
+            <span className="text-xl sm:text-2xl font-bold">FinSight</span>
+          </div>
+
+          {/* Account for mobile header space */}
+          <div className="h-16 lg:hidden"></div>
+
+          {/* Search Bar */}
+          <div className="relative mb-6">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+            <input
+              type="text"
+              placeholder="Search stocks..."
+              className="w-full bg-white/5 rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+            />
+          </div>
+
+          {/* Navigation */}
+          <nav className="space-y-1 sm:space-y-2">
+            {[
+              { icon: <BarChart3 />, label: "Dashboard", path: "/dashboard" },
+              { icon: <Wallet />, label: "Portfolio", path: "/portfolio" },
+              { icon: <Brain />, label: "AI Prediction", path: "/prediction" },
+              { icon: <Robot />, label: "Trade Simulator", path: "/simulator" },
+            ].map((item, index) => (
+              <Link
+                key={index}
+                to={item.path}
+                onClick={() => window.innerWidth < 1024 && setIsSidebarCollapsed(true)}
+                className="flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg hover:bg-white/5 transition-all hover:translate-x-1"
+              >
+                <div className="w-5 h-5 sm:w-6 sm:h-6">{item.icon}</div>
+                <span className="text-sm sm:text-base">{item.label}</span>
+              </Link>
+            ))}
+          </nav>
+
+          {/* Bottom Section */}
+          <div className="mt-auto pt-6">
+            <button 
+              onClick={() => setShowSettingsModal(true)}
+              className="flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg hover:bg-white/5 w-full text-sm sm:text-base"
             >
-              {item.icon}
-              <span>{item.label}</span>
-            </Link>
-          ))}
-        </nav>
-
-        <div className="mt-auto">
-          <button 
-            onClick={() => setShowSettingsModal(true)}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-white/5 w-full"
-          >
-            <Settings />
-            <span>Settings</span>
-          </button>
-
-          <div className="relative profile-section">
-            <button
-              onClick={() => setIsProfileOpen(!isProfileOpen)}
-              className="flex items-center gap-3 w-full mt-4 p-4 rounded-lg glass-effect hover:bg-white/5 transition-colors"
-            >
-              <div className="relative flex-shrink-0">
-                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center overflow-hidden">
-                  {avatarPreview ? (
-                    <img
-                      src={avatarPreview}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <User className="w-6 h-6 text-blue-400" />
-                  )}
-                </div>
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-[#1F2128]" />
-              </div>
-              <p className="font-semibold text-base whitespace-nowrap overflow-hidden overflow-ellipsis">
-                {user?.nickname || user?.name?.split(' ')[0] || 'Loading...'}
-              </p>
-              <Bell className="ml-auto flex-shrink-0 w-5 h-5 text-gray-400" />
+              <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
+              <span>Settings</span>
             </button>
 
-            {/* Profile Dropdown */}
-            {isProfileOpen && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 p-4 rounded-lg bg-[#2A2D38] border border-white/10 shadow-xl">
-                <div className="mb-4 pb-4 border-b border-white/10">
-                  <p className="text-sm text-gray-400">Signed in as</p>
-                  <p className="font-semibold mt-1">{user?.name || 'Loading...'}</p>
-                  <p className="text-sm text-gray-400 mt-1">{user?.email || ''}</p>
+            {/* Profile Button */}
+            <div className="relative profile-section">
+              <button
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="flex items-center gap-3 w-full mt-2 sm:mt-4 p-3 sm:p-4 rounded-lg glass-effect hover:bg-white/5 transition-colors"
+              >
+                <div className="relative flex-shrink-0">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-500/20 flex items-center justify-center overflow-hidden">
+                    {avatarPreview ? (
+                      <img
+                        src={avatarPreview}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <User className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400" />
+                    )}
+                  </div>
+                  <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#1F2128]" />
                 </div>
-                <button
-                  onClick={handleSignOutClick}
-                  className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
-            )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm sm:text-base truncate">
+                    {user?.nickname || user?.name?.split(' ')[0] || 'Loading...'}
+                  </p>
+                  <p className="text-xs sm:text-sm text-gray-400 truncate">{user?.email || ''}</p>
+                </div>
+                <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" />
+              </button>
+
+              {/* Profile Dropdown */}
+              {isProfileOpen && (
+                <div className="absolute bottom-full left-0 right-0 mb-2 p-3 sm:p-4 rounded-lg bg-[#2A2D38] border border-white/10 shadow-xl">
+                  <div className="mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-white/10">
+                    <p className="text-xs sm:text-sm text-gray-400">Signed in as</p>
+                    <p className="font-semibold text-sm sm:text-base mt-1">{user?.name || 'Loading...'}</p>
+                    <p className="text-xs sm:text-sm text-gray-400 mt-0.5">{user?.email || ''}</p>
+                  </div>
+                  <button
+                    onClick={handleSignOutClick}
+                    className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors text-sm sm:text-base"
+                  >
+                    <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

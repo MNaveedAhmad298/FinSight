@@ -22,7 +22,7 @@ const AppContent = () => {
   return (
     <div className="flex h-screen">
       {!isAuthPage && <Sidebar />}
-      <div className="flex-1 bg-[#0D0E12] text-white overflow-auto relative">
+      <div className={`flex-1 bg-[#0D0E12] text-white overflow-auto relative ${!isAuthPage ? 'lg:pt-0 pt-16' : ''}`}>
         <Routes>
           <Route path="/" element={<LoginPage />} />
           <Route path="/login" element={<LoginPage />} />

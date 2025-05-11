@@ -161,82 +161,60 @@ function Dashboard() {
   }
 
   return (
-    <div className="flex-1 p-8 overflow-auto">
-      <div className="grid grid-cols-3 gap-6 mb-8">
+    <div className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
         {[
           {
             title: "Portfolio Value",
             value: `$${portfolioData.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             change: `${portfolioData.totalValueChange >= 0 ? '+' : ''}${portfolioData.totalValueChange.toFixed(2)}%`,
             period: "vs last week",
-            icon: <LineChart className="w-6 h-6 text-blue-500" />,
-            isPositive: portfolioData.totalValueChange >= 0
+            icon: <LineChart className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />,
           },
           {
             title: "Today's Profit/Loss",
             value: `${portfolioData.dailyProfit >= 0 ? '+' : ''}$${portfolioData.dailyProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             change: `${portfolioData.dailyProfitChange >= 0 ? '+' : ''}${portfolioData.dailyProfitChange.toFixed(2)}%`,
             period: "today",
-            icon: <Wallet className="w-6 h-6 text-green-500" />,
-            isPositive: portfolioData.dailyProfit >= 0
+            icon: <Wallet className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />,
           },
           {
             title: "Total Investment",
             value: "$89,240.85",
             change: "+4.3%",
             period: "vs last month",
-            icon: <BarChart3 className="w-6 h-6 text-blue-500" />,
-            isPositive: true
+            icon: <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />,
           },
         ].map((stat, index) => (
           <div
             key={index}
-            className="
-              rounded-xl p-6
-              bg-white/5 backdrop-blur-md border border-white/10
-              transition-transform hover:-translate-y-1
-            "
+            className="rounded-xl p-4 sm:p-6 bg-white/5 backdrop-blur-md border border-white/10 transition-transform hover:-translate-y-1"
           >
-            <div className="flex justify-between items-start mb-4">
+            <div className="flex justify-between items-start mb-3 sm:mb-4">
               <div className="p-2 bg-white/5 rounded-lg">{stat.icon}</div>
-              <span className="text-sm text-gray-400">Updated just now</span>
+              <span className="text-xs sm:text-sm text-gray-400">Updated just now</span>
             </div>
-            <h3 className="text-lg font-medium mb-1">{stat.title}</h3>
+            <h3 className="text-base sm:text-lg font-medium mb-1">{stat.title}</h3>
             <div className="flex items-baseline gap-2">
-              <span className={`text-2xl font-bold ${stat.isPositive ? '' : 'text-red-500'}`}>{stat.value}</span>
-              <span className={stat.isPositive ? 'text-green-500 text-sm' : 'text-red-500 text-sm'}>{stat.change}</span>
+              <span className={`text-xl sm:text-2xl font-bold ${stat.isPositive ? '' : 'text-red-500'}`}>{stat.value}</span>
+              <span className={stat.isPositive ? 'text-green-500 text-xs sm:text-sm' : 'text-red-500 text-xs sm:text-sm'}>{stat.change}</span>
             </div>
-            <span className="text-sm text-gray-400">{stat.period}</span>
+            <span className="text-xs sm:text-sm text-gray-400">{stat.period}</span>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Market Activity Chart - Updated with better stock selector */}
-        <div className="rounded-xl p-6 col-span-2 bg-white/5 backdrop-blur-md border border-white/10">
-          <div className="flex justify-between items-center mb-6">
-            <div className="flex items-center gap-4">
-              <h2 className="text-xl font-bold">Market Activity</h2>
-              {/* <div className="mb-6 flex justify-end">
-                <div className="flex items-center gap-4">
-                  <span className="text-gray-400">Select Stock:</span>
-                  <select
-                    value={selectedSymbol}
-                    onChange={(e) => setSelectedSymbol(e.target.value)}
-                    className="stock-selector"
-                  >
-                    {stocks.map(stock => (
-                      <option key={stock.symbol} value={stock.symbol}>
-                        {stock.symbol} - {stock.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div> */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+        {/* Market Activity Chart */}
+        <div className="lg:col-span-2 rounded-xl p-4 sm:p-6 bg-white/5 backdrop-blur-md border border-white/10">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 sm:mb-6 gap-4 sm:gap-0">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <h2 className="text-lg sm:text-xl font-bold">Market Activity</h2>
               <select
                 value={selectedSymbol}
                 onChange={(e) => setSelectedSymbol(e.target.value)}
-                className="stock-selector"
+                className="stock-selector w-full sm:w-auto bg-white/5 rounded-lg px-3 py-1.5 sm:py-2 text-sm sm:text-base"
                 style={{
                   WebkitAppearance: "none",
                   MozAppearance: "none",
@@ -249,82 +227,86 @@ function Dashboard() {
                 }}
               >
                 {stocks.map((stock) => (
-                  <option
-                    key={stock.symbol}
-                    value={stock.symbol}
-                    className="bg-gray-800"
-                  >
+                  <option key={stock.symbol} value={stock.symbol} className="bg-gray-800">
                     {stock.symbol} - {stock.name}
                   </option>
                 ))}
               </select>
             </div>
           </div>
-          <div className="flex space-x-2 mb-6">
-            {["1d", "5d", "1mo", "3mo"].map((range) => (
+          
+          <div className="flex flex-wrap gap-2 mb-4 sm:mb-6">
+            {["1d", "5d", "1mo", "3mo", "6mo", "1y"].map((range) => (
               <button
                 key={range}
                 onClick={() => setChartPeriod(range)}
-                className="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-sm transition-colors"
+                className="px-2.5 sm:px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs sm:text-sm transition-colors"
               >
                 {range}
               </button>
             ))}
           </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer>
-              <AreaChart data={chartData}>
-                <XAxis dataKey="time" tick={{ fill: "#6B7280" }} />
-                <YAxis domain={["auto", "auto"]} tick={{ fill: "#6B7280" }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "rgba(17,24,39,0.9)",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                  }}
-                />
-                <Area
-                  dataKey="value"
-                  stroke="#3B82F6"
-                  fill="rgba(59, 130, 246, 0.1)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          
+          <div className="h-[250px] sm:h-[300px]">
+            {chartData.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-blue-400 animate-pulse text-sm sm:text-base">Loading chart data...</div>
+              </div>
+            ) : (
+              <ResponsiveContainer>
+                <AreaChart data={chartData}>
+                  <XAxis dataKey="time" tick={{ fill: "#6B7280", fontSize: "12px" }} />
+                  <YAxis domain={["auto", "auto"]} tick={{ fill: "#6B7280", fontSize: "12px" }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "rgba(17,24,39,0.9)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "0.5rem",
+                      fontSize: "12px"
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#3B82F6"
+                    fill="rgba(59, 130, 246, 0.1)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
-        {/* Top Movers - Updated with real data */}
-        <div
-          className="
-            rounded-xl p-6
-            bg-white/5 backdrop-blur-md border border-white/10
-          "
-        >
-          <h2 className="text-xl font-bold mb-4">Top Movers</h2>
-          <div className="space-y-4">
+        {/* Top Movers */}
+        <div className="rounded-xl p-4 sm:p-6 bg-white/5 backdrop-blur-md border border-white/10">
+          <h2 className="text-lg sm:text-xl font-bold mb-4">Top Movers</h2>
+          <div className="space-y-3 sm:space-y-4">
             {[...stocks]
               .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))
               .slice(0, 3)
               .map((stock) => (
                 <div
                   key={stock.symbol}
-                  className="flex items-center justify-between p-3 bg-white/5 rounded-lg"
+                  className="flex items-center justify-between p-3 sm:p-4 bg-white/5 rounded-lg"
                 >
                   <div>
-                    <div className="font-medium">{stock.symbol}</div>
-                    <div className="text-sm text-gray-400">{stock.name}</div>
+                    <div className="font-medium text-sm sm:text-base">{stock.symbol}</div>
+                    <div className="text-xs sm:text-sm text-gray-400">{stock.name}</div>
                   </div>
                   <div className="text-right">
-                    <div className="font-medium">${stock.price.toFixed(2)}</div>
+                    <div className="font-medium text-sm sm:text-base">
+                      ${stock.price?.toFixed(2) || "0.00"}
+                    </div>
                     <div
                       className={`
-                        text-sm flex items-center gap-1
+                        text-xs sm:text-sm flex items-center gap-1
                         ${stock.change >= 0 ? "text-green-500" : "text-red-500"}
                       `}
                     >
                       {stock.change >= 0 ? (
-                        <ArrowUp className="w-4 h-4" />
+                        <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4" />
                       ) : (
-                        <ArrowDown className="w-4 h-4" />
+                        <ArrowDown className="w-3 h-3 sm:w-4 sm:h-4" />
                       )}
                       {Math.abs(stock.change).toFixed(2)}%
                     </div>
@@ -335,74 +317,75 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Watchlist Table - Updated with real data */}
-      <div className="rounded-xl p-6 mt-6 bg-white/5 backdrop-blur-md border border-white/10">
-        <h2 className="text-xl font-bold mb-4 text-gray-100">Watchlist</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-gray-400 border-b border-white/10">
-                <th className="pb-4 text-left">Symbol</th>
-                <th className="pb-4 text-left">Name</th>
-                <th className="pb-4 text-right">Price</th>
-                <th className="pb-4 text-right">24h Change</th>
-                <th className="pb-4 text-right">Volume</th>
-                <th className="pb-4 text-right">Trade</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stocks.map((stock) => (
-                <tr
-                  key={stock.symbol}
-                  className="border-b border-white/5 hover:bg-white/5 transition-colors"
-                >
-                  <td className="py-4 font-medium flex items-center">
-                    {stock.logo ? (
-                      <img
-                        src={stock.logo}
-                        alt={stock.symbol}
-                        className="table-icon"
-                        onError={(e) => {
-                          e.target.style.display = "none";
-                        }}
-                      />
-                    ) : (
-                      <div className="table-icon bg-blue-500/10 flex items-center justify-center">
-                        <LineChart className="w-4 h-4 text-blue-400" />
-                      </div>
-                    )}
-                    {stock.symbol}
-                  </td>
-                  <td className="py-4 text-gray-400">{stock.name}</td>
-                  <td className="py-4 text-right">${stock.price.toFixed(2)}</td>
-                  <td
-                    className={`py-4 text-right ${
-                      stock.change >= 0 ? "text-green-500" : "text-red-500"
-                    }`}
-                  >
-                    {stock.change >= 0 ? "+" : ""}
-                    {Math.abs(stock.change).toFixed(2)}%
-                  </td>
-                  <td className="py-4 text-right text-gray-400">
-                    {stock.volume}
-                  </td>
-                  <td className="py-4 text-right">
-                    <Link
-                      to={`/trade/${stock.symbol}?currentValue=${stock.price}&changeValue=${stock.change}&currentPercent=${stock.change}`}
-                      className="px-4 py-1 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
-                    >
-                      Trade
-                    </Link>
-                  </td>
+      {/* Watchlist Table */}
+      <div className="rounded-xl p-4 sm:p-6 mt-4 sm:mt-6 bg-white/5 backdrop-blur-md border border-white/10">
+        <h2 className="text-lg sm:text-xl font-bold mb-4 text-gray-100">Watchlist</h2>
+        <div className="overflow-x-auto -mx-4 sm:-mx-6">
+          <div className="inline-block min-w-full align-middle">
+            <table className="min-w-full">
+              <thead>
+                <tr className="text-gray-400 border-b border-white/10">
+                  <th className="text-left text-xs sm:text-sm font-semibold p-4 sm:p-6">Symbol</th>
+                  <th className="text-left text-xs sm:text-sm font-semibold p-4 sm:p-6">Name</th>
+                  <th className="text-right text-xs sm:text-sm font-semibold p-4 sm:p-6">Price</th>
+                  <th className="text-right text-xs sm:text-sm font-semibold p-4 sm:p-6">24h Change</th>
+                  <th className="text-right text-xs sm:text-sm font-semibold p-4 sm:p-6">Volume</th>
+                  <th className="text-right text-xs sm:text-sm font-semibold p-4 sm:p-6">Trade</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {stocks.map((stock) => (
+                  <tr
+                    key={stock.symbol}
+                    className="hover:bg-white/5 transition-colors"
+                  >
+                    <td className="py-3 sm:py-4 px-4 sm:px-6 font-medium text-xs sm:text-sm">
+                      <div className="flex items-center gap-2">
+                        {stock.logo ? (
+                          <img
+                            src={stock.logo}
+                            alt={stock.symbol}
+                            className="w-6 h-6 sm:w-8 sm:h-8 rounded"
+                            onError={(e) => {
+                              e.target.style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-500/10 rounded flex items-center justify-center">
+                            <LineChart className="w-3 h-3 sm:w-4 sm:h-4 text-blue-400" />
+                          </div>
+                        )}
+                        {stock.symbol}
+                      </div>
+                    </td>
+                    <td className="p-4 sm:p-6 text-gray-400 text-xs sm:text-sm">{stock.name}</td>
+                    <td className="p-4 sm:p-6 text-right text-xs sm:text-sm">
+                      ${stock.price?.toFixed(2) || "0.00"}
+                    </td>
+                    <td className={`p-4 sm:p-6 text-right text-xs sm:text-sm ${stock.change >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      {stock.change >= 0 ? "+" : ""}
+                      {Math.abs(stock.change || 0).toFixed(2)}%
+                    </td>
+                    <td className="p-4 sm:p-6 text-right text-gray-400 text-xs sm:text-sm">
+                      {stock.volume || "0"}
+                    </td>
+                    <td className="p-4 sm:p-6 text-right">
+                      <Link
+                        to={`/trade/${stock.symbol}?currentValue=${stock.price}&changeValue=${stock.change}&currentPercent=${stock.change}`}
+                        className="px-3 sm:px-4 py-1 sm:py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors text-xs sm:text-sm"
+                      >
+                        Trade
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
   );
 }
-
 
 export default Dashboard;
