@@ -91,14 +91,20 @@ class Portfolio:
 
                 for holding in holdings:
                     current_price = self.get_current_price(holding['stock_symbol'])
+                    
+                    # Get previous day's closing price
+                    stock = yf.Ticker(holding['stock_symbol'])
+                    hist = stock.history(period='2d')
+                    previous_close = hist['Close'].iloc[-2] if len(hist) >= 2 else current_price
+                    
                     holding_value = current_price * holding['quantity']
                     holding_cost = holding['average_price'] * holding['quantity']
                     holdings_value += holding_value
                     total_cost += holding_cost
 
                     # Calculate daily profit for this holding
-                    # For simplicity, use current - average price (can be improved with historical data)
-                    daily_profit += (current_price - holding['average_price']) * holding['quantity']
+                    daily_holding_profit = (current_price - previous_close) * holding['quantity']
+                    daily_profit += daily_holding_profit
 
                     formatted_holdings.append({
                         'stock_symbol': holding['stock_symbol'],
@@ -106,6 +112,7 @@ class Portfolio:
                         'quantity': holding['quantity'],
                         'average_price': holding['average_price'],
                         'current_price': current_price,
+                        'previous_close': previous_close,
                         'total_value': holding_value
                     })
 
@@ -125,6 +132,128 @@ class Portfolio:
                     'dailyProfit': daily_profit,
                     'overallReturn': overall_return,
                     'availableBalance': available_balance
+                })
+
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
+        @self.blueprint.route('/api/trade', methods=['POST'])
+        def trade():
+            try:
+                token = request.headers.get('Authorization')
+                if not token:
+                    return jsonify({'error': 'Token is missing'}), 401
+
+                if token.startswith('Bearer '):
+                    token = token[7:]
+
+                try:
+                    data = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+                    current_user = self.db.users.find_one({"_id": ObjectId(data['user_id'])})
+                    if not current_user:
+                        return jsonify({'error': 'Invalid user'}), 401
+                except jwt.InvalidTokenError:
+                    return jsonify({'error': 'Invalid token'}), 401
+
+                # Get trade details from request
+                trade_data = request.json
+                symbol = trade_data.get('symbol')
+                trade_type = trade_data.get('tradeType')
+                # Ensure quantity is always an integer
+                try:
+                    quantity = int(float(trade_data.get('quantity', 0)))
+                    if quantity != float(trade_data.get('quantity', 0)):
+                        return jsonify({'error': 'Quantity must be a whole number'}), 400
+                except ValueError:
+                    return jsonify({'error': 'Invalid quantity'}), 400
+                    
+                price = float(trade_data.get('price', 0))
+
+                if not all([symbol, trade_type, quantity, price]) or quantity <= 0:
+                    return jsonify({'error': 'Invalid trade parameters'}), 400
+
+                # Get user's portfolio
+                portfolio = self.db.portfolios.find_one({"user_id": ObjectId(current_user["_id"])})
+                if not portfolio:
+                    return jsonify({'error': 'Portfolio not found'}), 404
+
+                # Get current holdings
+                holding = self.db.portfolio_holdings.find_one({
+                    "portfolio_id": portfolio["_id"],
+                    "stock_symbol": symbol
+                })
+
+                current_shares = holding['quantity'] if holding else 0
+                available_balance = portfolio.get('available_balance', 0)
+
+                if trade_type == 'BUY':
+                    # Check if user has enough balance
+                    total_cost = quantity * price
+                    if total_cost > available_balance:
+                        return jsonify({'error': 'Insufficient balance'}), 400
+
+                    # Update or create holding
+                    if holding:
+                        new_quantity = current_shares + quantity
+                        new_avg_price = ((current_shares * holding['average_price']) + (quantity * price)) / new_quantity
+                        self.db.portfolio_holdings.update_one(
+                            {"_id": holding["_id"]},
+                            {"$set": {
+                                "quantity": new_quantity,
+                                "average_price": new_avg_price
+                            }}
+                        )
+                    else:
+                        self.db.portfolio_holdings.insert_one({
+                            "portfolio_id": portfolio["_id"],
+                            "stock_symbol": symbol,
+                            "quantity": quantity,
+                            "average_price": price
+                        })
+
+                    # Update available balance
+                    self.db.portfolios.update_one(
+                        {"_id": portfolio["_id"]},
+                        {"$inc": {"available_balance": -total_cost}}
+                    )
+
+                elif trade_type == 'SELL':
+                    # Check if user has enough shares
+                    if not holding or quantity > current_shares:
+                        return jsonify({'error': 'Insufficient shares'}), 400
+
+                    # Calculate sale proceeds
+                    sale_proceeds = quantity * price
+
+                    # Update holding
+                    new_quantity = current_shares - quantity
+                    if new_quantity > 0:
+                        self.db.portfolio_holdings.update_one(
+                            {"_id": holding["_id"]},
+                            {"$set": {"quantity": new_quantity}}
+                        )
+                    else:
+                        # Remove holding if all shares are sold
+                        self.db.portfolio_holdings.delete_one({"_id": holding["_id"]})
+
+                    # Update available balance
+                    self.db.portfolios.update_one(
+                        {"_id": portfolio["_id"]},
+                        {"$inc": {"available_balance": sale_proceeds}}
+                    )
+
+                # Get updated portfolio data
+                updated_portfolio = self.db.portfolios.find_one({"_id": portfolio["_id"]})
+                holdings = list(self.db.portfolio_holdings.find({"portfolio_id": portfolio["_id"]}))
+                
+                # Format holdings for response
+                shares_data = {}
+                for h in holdings:
+                    shares_data[h['stock_symbol']] = h['quantity']
+
+                return jsonify({
+                    'usd': updated_portfolio['available_balance'],
+                    'shares': shares_data
                 })
 
             except Exception as e:

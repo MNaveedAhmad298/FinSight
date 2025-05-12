@@ -108,19 +108,16 @@ function TradePage() {
   };
 
   return (
-    <div
-      className="p-8 text-white"
-      style={{ fontFamily: "'Poppins', sans-serif" }}
-    >
+    <div className="p-4 sm:p-8 text-white pb-safe" style={{ fontFamily: "'Poppins', sans-serif" }}>
       {/* Top section: symbol, price, buy/sell */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-4 sm:gap-0">
         <div>
           <h1 className="text-xl font-bold">{symbol?.toUpperCase()}</h1>
           <p className="text-sm text-gray-400">{stockData?.name || 'Loading...'}</p>
         </div>
 
-        {/* Buy / Sell Buttons that open the modal */}
-        <div className="flex items-center space-x-2">
+        {/* Buy / Sell Buttons - Only on desktop */}
+        <div className="hidden sm:flex items-center space-x-2">
           <button
             className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500"
             onClick={() => setIsModalOpen(true)}
@@ -138,27 +135,25 @@ function TradePage() {
 
       {/* Price + Change */}
       <div className="mb-2">
-        <span className="text-3xl font-bold mr-2">
+        <span className="text-2xl sm:text-3xl font-bold mr-2">
           ${currentPrice.toLocaleString()}
         </span>
-        <span
-          className={`text-lg font-semibold ${
-            changeValue >= 0 ? "text-green-400" : "text-red-400"
-          }`}
-        >
-          {changeValue >= 0 ? `+${changeValue}` : changeValue}(
+        <span className={`text-base sm:text-lg font-semibold ${
+          changeValue >= 0 ? "text-green-400" : "text-red-400"
+        }`}>
+          {changeValue >= 0 ? `+${changeValue}` : changeValue} (
           {changePercent >= 0 ? `+${changePercent}%` : `${changePercent}%`})
         </span>
       </div>
-      <p className="text-gray-400 text-sm mb-4">{formattedTime}</p>
+      <p className="text-gray-400 text-xs sm:text-sm mb-4">{formattedTime}</p>
 
       {/* Time Range Buttons */}
-      <div className="flex space-x-2 mb-6">
+      <div className="flex space-x-2 mb-4 sm:mb-6 overflow-x-auto pb-2 sm:pb-0">
         {["1d", "5d", "1mo", "3mo"].map((range) => (
           <button
             key={range}
             onClick={() => setChartPeriod(range)}
-            className={`px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-sm transition-colors ${
+            className={`px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-sm transition-colors flex-shrink-0 ${
               chartPeriod === range ? "border border-white/20" : ""
             }`}
           >
@@ -168,20 +163,21 @@ function TradePage() {
       </div>
 
       {/* Green Line Chart */}
-      <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-4 h-[500px]">
+      <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-2 sm:p-4 h-[300px] sm:h-[500px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="rgba(255,255,255,0.1)"
-            />
-            <XAxis
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+            <XAxis 
               dataKey="date"
               stroke="#9CA3AF"
               tickFormatter={formatChartTime}
+              tick={{ fontSize: window.innerWidth < 640 ? 10 : 12 }}
             />
-            <YAxis stroke="#9CA3AF" domain={["auto", "auto"]} />
-            
+            <YAxis 
+              stroke="#9CA3AF" 
+              domain={["auto", "auto"]}
+              tick={{ fontSize: window.innerWidth < 640 ? 10 : 12 }}
+            />
             <Tooltip
               labelFormatter={formatChartTime}
               contentStyle={{
@@ -201,8 +197,34 @@ function TradePage() {
         </ResponsiveContainer>
       </div>
 
-      {/* Analytics Text Block */}
-      <div className="text-sm text-gray-300 leading-relaxed bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-4 mt-6">
+      {/* Mobile Trade Section - Always visible on mobile */}
+      <div className="sm:hidden mt-4 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden">
+        <TradeModal
+          symbol={symbol}
+          currentPrice={currentPrice}
+          changePercent={changePercent}
+          isOpen={true}
+          onClose={() => {}}
+          isMobile={true}
+        />
+      </div>
+
+      {/* Desktop Trade Modal */}
+      {isModalOpen && (
+        <div className="hidden sm:block">
+          <TradeModal
+            symbol={symbol}
+            currentPrice={currentPrice}
+            changePercent={changePercent}
+            isOpen={isModalOpen}
+            onClose={() => setIsModalOpen(false)}
+            isMobile={false}
+          />
+        </div>
+      )}
+
+      {/* Analytics Text Block - Hidden on mobile */}
+      <div className="hidden sm:block text-sm text-gray-300 leading-relaxed bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-4 mt-6">
         <p className="mb-2">
           According to our current {symbol} price prediction, the price of{" "}
           {symbol} is predicted to rise by{" "}
@@ -220,7 +242,7 @@ function TradePage() {
           days with 3.46% price volatility over the last 30 days.
         </p>
         <p className="mb-2">
-          Based on our forecast, it’s now a{" "}
+          Based on our forecast, it's now a{" "}
           <span className="text-red-400">bad time</span> to buy {symbol}.
         </p>
         <p>
@@ -231,15 +253,6 @@ function TradePage() {
           on {symbol}.
         </p>
       </div>
-
-      {/* The TradeModal in top-right corner, toggled by isModalOpen */}
-      <TradeModal
-        symbol={symbol}
-        currentPrice={currentPrice}
-        changePercent={changePercent}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
     </div>
   );
 }

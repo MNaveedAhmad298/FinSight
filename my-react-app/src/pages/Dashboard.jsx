@@ -77,7 +77,7 @@ function Dashboard() {
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [chartData, setChartData] = useState([]);
-  const [chartPeriod, setChartPeriod] = useState("1W");
+  const [chartPeriod, setChartPeriod] = useState("1d");
   const [selectedSymbol, setSelectedSymbol] = useState("AAPL");
   const [chartDataCache, setChartDataCache] = useState({});
   const [socket, setSocket] = useState(null);
@@ -285,40 +285,37 @@ function Dashboard() {
   }
 
   return (
-    <div className="flex-1 p-8 overflow-auto">
-      <div className="grid grid-cols-3 gap-6 mb-8">
+    <div className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
         {[
           {
             title: "Portfolio Value",
-            value: "$125,566.77",
-            change: "+2.5%",
+            value: `$${portfolioData.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            change: `${portfolioData.totalValueChange >= 0 ? '+' : ''}${portfolioData.totalValueChange.toFixed(2)}%`,
             period: "vs last week",
-            icon: <LineChart className="w-6 h-6 text-blue-500" />,
+            icon: <LineChart className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />,
           },
           {
-            title: "Today's Profit",
-            value: "+$3,204.75",
-            change: "+1.8%",
+            title: "Today's Profit/Loss",
+            value: `${portfolioData.dailyProfit >= 0 ? '+' : ''}$${portfolioData.dailyProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            change: `${portfolioData.dailyProfitChange >= 0 ? '+' : ''}${portfolioData.dailyProfitChange.toFixed(2)}%`,
             period: "today",
-            icon: <Wallet className="w-6 h-6 text-green-500" />,
+            icon: <Wallet className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />,
           },
           {
             title: "Total Investment",
             value: "$89,240.85",
             change: "+4.3%",
             period: "vs last month",
-            icon: <BarChart3 className="w-6 h-6 text-blue-500" />,
+            icon: <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />,
           },
         ].map((stat, index) => (
           <div
             key={index}
-            className="
-              rounded-xl p-6
-              bg-white/5 backdrop-blur-md border border-white/10
-              transition-transform hover:-translate-y-1
-            "
+            className="rounded-xl p-4 sm:p-6 bg-white/5 backdrop-blur-md border border-white/10 transition-transform hover:-translate-y-1"
           >
-            <div className="flex justify-between items-start mb-4">
+            <div className="flex justify-between items-start mb-3 sm:mb-4">
               <div className="p-2 bg-white/5 rounded-lg">{stat.icon}</div>
               <span className="text-sm text-gray-400">
                 {connected ? (
@@ -331,12 +328,12 @@ function Dashboard() {
                 )}
               </span>
             </div>
-            <h3 className="text-lg font-medium mb-1">{stat.title}</h3>
+            <h3 className="text-base sm:text-lg font-medium mb-1">{stat.title}</h3>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold">{stat.value}</span>
-              <span className="text-green-500 text-sm">{stat.change}</span>
+              <span className={`text-xl sm:text-2xl font-bold ${stat.isPositive ? '' : 'text-red-500'}`}>{stat.value}</span>
+              <span className={stat.isPositive ? 'text-green-500 text-xs sm:text-sm' : 'text-red-500 text-xs sm:text-sm'}>{stat.change}</span>
             </div>
-            <span className="text-sm text-gray-400">{stat.period}</span>
+            <span className="text-xs sm:text-sm text-gray-400">{stat.period}</span>
           </div>
         ))}
       </div>
@@ -350,7 +347,7 @@ function Dashboard() {
               <select
                 value={selectedSymbol}
                 onChange={(e) => setSelectedSymbol(e.target.value)}
-                className="stock-selector"
+                className="stock-selector w-full sm:w-auto bg-white/5 rounded-lg px-3 py-1.5 sm:py-2 text-sm sm:text-base"
                 style={{
                   WebkitAppearance: "none",
                   MozAppearance: "none",
@@ -363,11 +360,7 @@ function Dashboard() {
                 }}
               >
                 {stocks.map((stock) => (
-                  <option
-                    key={stock.symbol}
-                    value={stock.symbol}
-                    className="bg-gray-800"
-                  >
+                  <option key={stock.symbol} value={stock.symbol} className="bg-gray-800">
                     {stock.symbol} - {stock.name}
                   </option>
                 ))}
@@ -379,7 +372,7 @@ function Dashboard() {
               <button
                 key={range}
                 onClick={() => setChartPeriod(range)}
-                className="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-sm transition-colors"
+                className="px-2.5 sm:px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs sm:text-sm transition-colors"
               >
                 {range}
               </button>
@@ -412,15 +405,10 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Top Movers - Updated with real data */}
-        <div
-          className="
-            rounded-xl p-6
-            bg-white/5 backdrop-blur-md border border-white/10
-          "
-        >
-          <h2 className="text-xl font-bold mb-4">Top Movers</h2>
-          <div className="space-y-4">
+        {/* Top Movers */}
+        <div className="rounded-xl p-4 sm:p-6 bg-white/5 backdrop-blur-md border border-white/10">
+          <h2 className="text-lg sm:text-xl font-bold mb-4">Top Movers</h2>
+          <div className="space-y-3 sm:space-y-4">
             {[...stocks]
               .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))
               .slice(0, 3)
@@ -433,21 +421,21 @@ function Dashboard() {
                   `}
                 >
                   <div>
-                    <div className="font-medium">{stock.symbol}</div>
-                    <div className="text-sm text-gray-400">{stock.name}</div>
+                    <div className="font-medium text-sm sm:text-base">{stock.symbol}</div>
+                    <div className="text-xs sm:text-sm text-gray-400">{stock.name}</div>
                   </div>
                   <div className="text-right">
                     <div className="font-medium">${stock.price?.toFixed(2) || "0.00"}</div>
                     <div
                       className={`
-                        text-sm flex items-center gap-1
+                        text-xs sm:text-sm flex items-center gap-1
                         ${stock.change >= 0 ? "text-green-500" : "text-red-500"}
                       `}
                     >
                       {stock.change >= 0 ? (
-                        <ArrowUp className="w-4 h-4" />
+                        <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4" />
                       ) : (
-                        <ArrowDown className="w-4 h-4" />
+                        <ArrowDown className="w-3 h-3 sm:w-4 sm:h-4" />
                       )}
                       {Math.abs(stock.change).toFixed(2)}%
                     </div>

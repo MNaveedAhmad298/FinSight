@@ -58,52 +58,70 @@ function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
-      <div className="w-full max-w-md relative z-10 rounded-2xl p-8 bg-white/5 backdrop-blur-md border border-white/10 shadow-xl">
-        <h1 className="text-3xl font-bold text-center mb-4">Reset Password</h1>
-        <p className="text-gray-400 text-center mb-6">
-          Enter a new password for your account
-        </p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-900 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-900/20 to-gray-900 z-0"></div>
 
-        {message && <p className="text-green-400 mb-4">{message}</p>}
-        {error && <p className="text-red-500 mb-4">{error}</p>}
-
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4 relative">
-            <Lock className="absolute left-3 top-3 text-gray-400" />
-            <input
-              type="password"
-              placeholder="New password"
-              className="block w-full pl-10 pr-3 py-3 rounded-lg bg-white/5 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-            />
+      <div className="w-full max-w-[min(90%,420px)] relative z-10">
+        <div className="rounded-2xl p-4 sm:p-8 bg-white/5 backdrop-blur-md border border-white/10 shadow-xl">
+          <div className="text-center mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Reset Password</h1>
+            <p className="text-gray-400">Enter a new password for your account</p>
           </div>
-          <div className="mb-6 relative">
-            <Lock className="absolute left-3 top-3 text-gray-400" />
-            <input
-              type="password"
-              placeholder="Confirm password"
-              className="block w-full pl-10 pr-3 py-3 rounded-lg bg-white/5 placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
-              value={confirm}
-              onChange={e => setConfirm(e.target.value)}
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
-          >
-            {loading ? "Resetting..." : <>Reset Password <ArrowRight /></>}
-          </button>
-        </form>
 
-        <div className="mt-6 text-center">
-          <Link to="/login" className="text-blue-400 hover:text-blue-300">
-            Back to Login
-          </Link>
+          {message && <p className="text-green-400 mb-4 text-sm text-center">{message}</p>}
+          {error && <p className="text-red-500 mb-4 text-sm text-center">{error}</p>}
+
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Lock className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type="password"
+                placeholder="New password"
+                className="block w-full pl-10 pr-3 py-2.5 sm:py-3 border-0 rounded-lg bg-white/5 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:bg-white/10 transition-colors text-sm sm:text-base"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Lock className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type="password"
+                placeholder="Confirm password"
+                className="block w-full pl-10 pr-3 py-2.5 sm:py-3 border-0 rounded-lg bg-white/5 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:bg-white/10 transition-colors text-sm sm:text-base"
+                value={confirm}
+                onChange={e => setConfirm(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 sm:py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
+                ) : (
+                  <>
+                    Reset Password <ArrowRight className="h-5 w-5" />
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+
+          <div className="mt-6 sm:mt-8 text-center">
+            <Link to="/login" className="text-sm text-blue-400 hover:text-blue-300">
+              Back to Login
+            </Link>
+          </div>
         </div>
       </div>
     </div>

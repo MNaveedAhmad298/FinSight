@@ -437,14 +437,16 @@ def signup():
         "passwordHash": hashed_password,
         "role": "student",
         "emailVerified": False,
-        "registeredAt": datetime.datetime.utcnow()
+        "registeredAt": datetime.datetime.utcnow(),
+        "nickname": name,  # Initialize nickname with name
+        "avatar": None     # Initialize empty avatar
     }
 
-    users_collection.insert_one(user)
+    result = users_collection.insert_one(user)
     
     # Create an initial portfolio for the new user with some starting balance
     db.portfolios.insert_one({
-        "user_id": user["_id"],
+        "user_id": result.inserted_id,
         "available_balance": 10000.00  # Starting with $10,000 virtual money
     })
 
@@ -470,7 +472,9 @@ def login():
             "id": str(user["_id"]),
             "name": user["name"],
             "email": user["email"],
-            "role": user["role"]
+            "role": user["role"],
+            "nickname": user.get("nickname", user["name"]),
+            "avatar": user.get("avatar")
         }
 
         return jsonify({"token": token, "user": user_data}), 200
