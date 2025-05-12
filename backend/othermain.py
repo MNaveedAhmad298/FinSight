@@ -34,6 +34,7 @@ try:
     print("Connected to the database")
     stocks_collection = db.stocks
     users_collection = db.users  # Add users collection
+    portfolio_collection=db.portfolio_holdings
 except Exception as e:
     print(f"Error connecting to the database: {e}")
 
@@ -164,7 +165,9 @@ socketio = SocketIO(
 client = MongoClient(os.getenv('MONGO_URI'))
 db = client["FinSightDB"]
 users_collection = db["users"]
-stock_list= ["AAPL",  "MSFT",  
+PERIODS = ["1d","5d","1mo","6mo","1y","5y"]
+stock=db["Stocks"]
+STOCKS= ["AAPL",  "MSFT",  
     "NVDA",  
     "AMZN",  
     "AVGO",  
@@ -214,13 +217,6 @@ stock_list= ["AAPL",  "MSFT",
     "SNPS",  
     "PDD"  
 ]
-PERIODS = ["1d","5d","1mo","6mo","1y","5y"]
-stock=db["Stocks"]
-
-
-# # JWT secret
-# JWT_SECRET = os.getenv('JWT_SECRET')
-
 
 def on_open(ws):
     for symbol in SUBSCRIBE_SYMBOLS:
@@ -310,8 +306,17 @@ def symbols():
 
 @app.route("/api/stocks")
 def stocks():
-    # Return all current stock data
-    return jsonify(list(latest_stock_data.values()))
+    # start with whatever live data you have
+    data = { s: latest_stock_data.get(s, {}) for s in SUBSCRIBE_SYMBOLS }
+
+    # ensure every entry has basic fields
+    for sym, entry in data.items():
+        entry.setdefault("symbol", sym)
+        entry.setdefault("name", STOCK_METADATA.get(sym, {}).get("name", sym))
+        entry.setdefault("price", 0)
+        entry.setdefault("change", 0)
+        entry.setdefault("volume", 0)
+    return jsonify(list(data.values()))
 
 
 def init_app():
@@ -321,7 +326,7 @@ def init_app():
     # Initialize the cache with all your stocks and periods
     cache = StockDataCache(
         db=db,
-        stock_list=stock_list,  # Your existing stock list
+        SUBSCRIBE_SYMBOLS=SUBSCRIBE_SYMBOLS,  # Your existing stock list
         periods=PERIODS,        # Your existing periods list
         cache_dir='./stock_cache'  # Store file cache here
     )
@@ -335,36 +340,36 @@ def init_app():
     return app
 
 
-# Background data fetching
-def fetch_all_stocks():
-    try:
-        tickers = yf.Tickers(" ".join(STOCKS))
-        data = {}
-        for symbol in STOCKS:
-            try:
-                stock = tickers.tickers[symbol]
-                history = stock.history(period="1d")
-                if not history.empty:
-                    stock_info = {
-                        'symbol': symbol,
-                        'name': stock.info.get('longName', symbol),
-                        'open': history['Open'].iloc[0],
-                        'high': history['High'].max(),
-                        'low': history['Low'].min(),
-                        'close': history['Close'].iloc[-1],
-                        'change': ((history['Close'].iloc[-1] - history['Open'].iloc[0]) / 
-                                   history['Open'].iloc[0]) * 100,
-                        'volume': stock.info.get('volume', 0)
-                    }
-                    data[symbol] = stock_info
-                    stocks_collection.update_one({'symbol': symbol}, {'$set': stock_info}, upsert=True)
-            except Exception as e:
-                print(f"Error processing {symbol}: {str(e)}")
-                continue
+# # Background data fetching
+# def fetch_all_stocks():
+#     try:
+#         tickers = yf.Tickers(" ".join(STOCKS))
+#         data = {}
+#         for symbol in STOCKS:
+#             try:
+#                 stock = tickers.tickers[symbol]
+#                 history = stock.history(period="1d")
+#                 if not history.empty:
+#                     stock_info = {
+#                         'symbol': symbol,
+#                         'name': stock.info.get('longName', symbol),
+#                         'open': history['Open'].iloc[0],
+#                         'high': history['High'].max(),
+#                         'low': history['Low'].min(),
+#                         'close': history['Close'].iloc[-1],
+#                         'change': ((history['Close'].iloc[-1] - history['Open'].iloc[0]) / 
+#                                    history['Open'].iloc[0]) * 100,
+#                         'volume': stock.info.get('volume', 0)
+#                     }
+#                     data[symbol] = stock_info
+#                     stocks_collection.update_one({'symbol': symbol}, {'$set': stock_info}, upsert=True)
+#             except Exception as e:
+#                 print(f"Error processing {symbol}: {str(e)}")
+#                 continue
         
-        cache['stocks'] = data
-    except Exception as e:
-        print(f"Global fetch error: {str(e)}")
+#         cache['stocks'] = data
+#     except Exception as e:
+#         print(f"Global fetch error: {str(e)}")
 
 # def update_stock_data():
 #     while True:
@@ -750,21 +755,69 @@ def handle_disconnect():
 
 
 
-model = genai.GenerativeModel("gemini-2.0-flash")
-@app.route("/api/chat", methods=["POST"])
-def chat():
-    data = request.json or {}
-    user_query = data.get("message", "").strip()
-    if not user_query:
-        return jsonify({"error": "Empty message"}), 400
+# model = genai.GenerativeModel("gemini-2.0-flash")
+# @app.route("/api/chat", methods=["POST"])
+# def chat():
+#     data = request.json or {}
+#     user_query = data.get("message", "").strip()
+#     if not user_query:
+#         return jsonify({"error": "Empty message"}), 400
 
+#     try:
+#         # start a fresh chat each time (or reuse + pass history)
+#         chat = model.start_chat(history=[])
+#         resp = chat.send_message(user_query)
+#         return jsonify({"response": resp.text})
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    user_id = get_user_id()
+    history = load_history(user_id)[-4:]
+    perf = compute_portfolio_performance(user_id)
+    portfolio_summary = format_summary(perf)
+    prompt = build_prompt(history, portfolio_summary, request.json['message'])
     try:
-        # start a fresh chat each time (or reuse + pass history)
-        chat = model.start_chat(history=[])
-        resp = chat.send_message(user_query)
-        return jsonify({"response": resp.text})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        resp = gemini.complete(prompt, temperature=0.7, max_tokens=512)
+    except RateLimitError:
+        return {"error": "Service busy—please retry in a few seconds."}, 429
+    save_history(user_id, request.json['message'], resp)
+    return {"reply": resp}
+
+
+def get_user_id():
+    # This function should return the user ID from the JWT token
+    # For now, we'll just return a dummy user ID
+    return "dummy_user_id"
+def load_history(user_id):
+    # This function should load the chat history for the user from the database
+    # For now, we'll just return an empty list
+    return []
+def compute_portfolio_performance(user_id):
+    # This function should compute the portfolio performance for the user
+    # For now, we'll just return a dummy performance
+    return {
+        "total_value": 10000,
+        "daily_return": 0.01,
+        "weekly_return": 0.05,
+        "monthly_return": 0.10
+    }
+def format_summary(perf):
+    # This function should format the portfolio performance summary
+    # For now, we'll just return a dummy summary
+    return {
+        "total_value": perf["total_value"],
+        "daily_return": perf["daily_return"],
+        "weekly_return": perf["weekly_return"],
+        "monthly_return": perf["monthly_return"]
+    }
+def build_prompt(history, portfolio_summary, user_message):
+    # This function should build the prompt for the generative model
+    # For now, we'll just return a dummy prompt
+    return f"User message: {user_message}\nPortfolio summary: {portfolio_summary}\nChat history: {history}"
+
+
 
 
 if __name__ == '__main__':

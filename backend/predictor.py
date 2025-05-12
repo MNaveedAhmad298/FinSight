@@ -11,7 +11,7 @@ import time
 # --------------------------------------------------
 # CONFIGURATION
 # --------------------------------------------------
-FINNHUB_TOKEN     = "curqbshr01qt2ncgljrgcurqbshr01qt2ncgljs0"
+FINNHUB_TOKEN     = "d0gicf1r01qhao4trdqgd0gicf1r01qhao4trdr0"
 SUBSCRIBE_SYMBOLS = ["AAPL",  "MSFT",  
     "NVDA",  
     "AMZN",  
@@ -195,6 +195,11 @@ def on_close(ws, code, reason):
 # BACKGROUND THREAD TO RUN FINNHUB WS
 # --------------------------------------------------
 def start_finnhub_ws():
+    if not FINNHUB_TOKEN:
+        app.logger.error("FINNHUB_API_KEY environment variable not set. WebSocket will not connect.")
+        return
+
+    app.logger.info(f"Attempting to connect to Finnhub WebSocket with token: {'*' * (len(FINNHUB_TOKEN) - 4) + FINNHUB_TOKEN[-4:] if FINNHUB_TOKEN and len(FINNHUB_TOKEN) > 4 else 'Token too short or None'}")
     url = f"wss://ws.finnhub.io?token={FINNHUB_TOKEN}"
 
     # Keep the loop alive forever, reconnecting on errors/close
