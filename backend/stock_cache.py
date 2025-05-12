@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import os.path
 
 class StockDataCache:
-    def __init__(self, db, stock_list, periods, cache_dir='./stock_cache'):
+    def __init__(self, db, SUBSCRIBE_SYMBOLS, periods, cache_dir='./stock_cache'):
         """
         Initialize the stock data cache - fetch once per day
         
@@ -19,7 +19,7 @@ class StockDataCache:
             cache_dir: Directory to store file-based cache
         """
         self.db = db
-        self.stock_list = stock_list
+        self.SUBSCRIBE_SYMBOLS = SUBSCRIBE_SYMBOLS
         self.periods = periods
         self.lock = threading.Lock()
         self.last_update = {}  # Track when each stock/period was last updated

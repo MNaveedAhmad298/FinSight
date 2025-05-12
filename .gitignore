@@ -80,3 +80,6 @@ static/
 
 # VS Code debug logs
 .vscode-test/
+
+#stock_cache
+/backend/stock_cache/
