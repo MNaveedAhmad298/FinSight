@@ -4,13 +4,14 @@ import threading
 import time
 from flask_cors import CORS
 from cachetools import TTLCache
-from chatbot import FinSightAssistant
+# from chatbot import FinSightAssistant
 from pymongo import MongoClient
 from portfolio import Portfolio
 from predictor import StockPredictor
 from flask_bcrypt import Bcrypt
 import jwt
-import datetime
+# import datetime
+from datetime import datetime
 import os
 from dotenv import load_dotenv
 import smtplib
@@ -18,9 +19,15 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from bson import ObjectId
 import base64
+import websocket
+from flask_socketio import SocketIO
+import google.generativeai as genai
+import json
+from stock_cache import StockDataCache
+
 
 load_dotenv()
-chatbot = FinSightAssistant()
+# chatbot = FinSightAssistant()
 
 # JWT Configuration
 JWT_SECRET = os.getenv('JWT_SECRET', 'your-secret-key')  # Use environment variable in production
@@ -58,6 +65,244 @@ STOCKS = [
 CACHE_DURATION = 60  # 1 minute for stock summary
 cache = TTLCache(maxsize=20, ttl=CACHE_DURATION)
 STOCK_CACHE = TTLCache(maxsize=20, ttl=3600)
+
+FINNHUB_TOKEN     = "d0gicf1r01qhao4trdqgd0gicf1r01qhao4trdr0"
+SUBSCRIBE_SYMBOLS = ["AAPL",  "MSFT",  
+    "NVDA",  
+    "AMZN",  
+    "AVGO",  
+    "META",   
+    "NFLX",  
+    "COST",  
+    "TSLA",
+    "GOOGL", 
+    "GOOG",  
+    "TMUS",
+    "PLTR",
+    "CSCO",  
+    "LIN",
+    "ISRG",  
+    "PEP",   
+    "INTU", 
+    "BKNG",
+    "ADBE",
+    "AMD", 
+    "AMGN",
+    "QCOM", 
+    "TXN",  
+    "HON",  
+    "GILD",
+    "VRTX",
+    "CMCSA",
+    "PANW",  
+    "ADP",   
+    "AMAT", 
+    "MELI",
+    "CRWD",
+    "ADI",  
+    "SBUX",
+    "LRCX", 
+    "MSTR", 
+    "KLAC", 
+    "MDLZ",
+    "MU",
+    "INTC", 
+    "APP",   
+    "CTAS", 
+    "CDNS",
+    "ORLY",
+    "FTNT",  
+    "DASH",  
+    "CEG",   
+    "SNPS",  
+    "PDD"  ]
+
+# Stock metadata for better display
+STOCK_METADATA = {
+    "AAPL":  {"name": "Apple Inc."},
+    "MSFT":  {"name": "Microsoft Corporation"},
+    "NVDA":  {"name": "NVIDIA Corporation"},
+    "AMZN":  {"name": "Amazon.com, Inc."},
+    "AVGO":  {"name": "Broadcom Inc."},
+    "META":  {"name": "Meta Platforms, Inc."},
+    "NFLX":  {"name": "Netflix, Inc."},
+    "COST":  {"name": "Costco Wholesale Corporation"},
+    "TSLA":  {"name": "Tesla, Inc."},
+    "GOOGL": {"name": "Alphabet Inc. (Class A)"},
+    "GOOG":  {"name": "Alphabet Inc. (Class C)"},
+    "TMUS":  {"name": "T‑Mobile US, Inc."},
+    "PLTR":  {"name": "Palantir Technologies Inc."},
+    "CSCO":  {"name": "Cisco Systems, Inc."},
+    "LIN":   {"name": "Linde plc"},
+    "ISRG":  {"name": "Intuitive Surgical, Inc."},
+    "PEP":   {"name": "PepsiCo, Inc."},
+    "INTU":  {"name": "Intuit, Inc."},
+    "BKNG":  {"name": "Booking Holdings Inc."},
+    "ADBE":  {"name": "Adobe Inc."},
+    "AMD":   {"name": "Advanced Micro Devices, Inc."},
+    "AMGN":  {"name": "Amgen Inc."},
+    "QCOM":  {"name": "Qualcomm Incorporated"},
+    "TXN":   {"name": "Texas Instruments Incorporated"},
+    "HON":   {"name": "Honeywell International Inc."},
+    "GILD":  {"name": "Gilead Sciences, Inc."},
+    "VRTX":  {"name": "Vertex Pharmaceuticals Incorporated"},
+    "CMCSA": {"name": "Comcast Corporation"},
+    "PANW":  {"name": "Palo Alto Networks, Inc."},
+    "ADP":   {"name": "Automatic Data Processing, Inc."},
+    "AMAT":  {"name": "Applied Materials, Inc."},
+    "MELI":  {"name": "MercadoLibre, Inc."},
+    "CRWD":  {"name": "CrowdStrike Holdings, Inc."},
+    "ADI":   {"name": "Analog Devices, Inc."},
+    "SBUX":  {"name": "Starbucks Corporation"},
+    "LRCX":  {"name": "Lam Research Corporation"},
+    "MSTR":  {"name": "MicroStrategy Incorporated"},
+    "KLAC":  {"name": "KLA Corporation"},
+    "MDLZ":  {"name": "Mondelez International, Inc."},
+    "MU":    {"name": "Micron Technology, Inc."},
+    "INTC":  {"name": "Intel Corporation"},
+    "APP":   {"name": "AppLovin Corporation"},
+    "CTAS":  {"name": "Cintas Corporation"},
+    "CDNS":  {"name": "Cadence Design Systems, Inc."},
+    "ORLY":  {"name": "O’Reilly Automotive, Inc."},
+    "FTNT":  {"name": "Fortinet, Inc."},
+    "DASH":  {"name": "DoorDash, Inc."},
+    "CEG":   {"name": "Constellation Energy Corporation"},
+    "SNPS":  {"name": "Synopsys, Inc."},
+    "PDD":   {"name": "Pinduoduo Inc."}
+}
+
+latest_stock_data = {}
+PERIODS = ["1d","5d","1mo","6mo","1y","5y"]
+
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading",
+    logger=True,  # Enable logging for debugging
+    engineio_logger=True  # Enable Engine.IO logging
+)
+
+def on_open(ws):
+    for symbol in SUBSCRIBE_SYMBOLS:
+        ws.send(json.dumps({"type": "subscribe", "symbol": symbol}))
+
+def on_message(ws, message):
+    payload = json.loads(message)
+    if payload.get("type") != "trade":
+        return
+
+    # Process all incoming trades
+    for t in payload["data"]:
+        symbol = t["s"]
+        price = round(t["p"], 2)
+        volume = t["v"]
+        timestamp = datetime.fromtimestamp(t["t"] / 1000).isoformat()
+        
+        # Calculate price change if we have previous data
+        change = 0
+        if symbol in latest_stock_data and latest_stock_data[symbol].get("price"):
+            old_price = latest_stock_data[symbol]["price"]
+            change = ((price - old_price) / old_price) * 100 if old_price else 0
+        
+        # Update our stored data
+        if symbol not in latest_stock_data:
+            latest_stock_data[symbol] = {
+                "symbol": symbol,
+                "name": STOCK_METADATA.get(symbol, {}).get("name", symbol),
+                "price": price,
+                "volume": volume,
+                "change": change,
+                "timestamp": timestamp
+            }
+        else:
+            latest_stock_data[symbol]["price"] = price
+            latest_stock_data[symbol]["volume"] = volume
+            latest_stock_data[symbol]["change"] = change
+            latest_stock_data[symbol]["timestamp"] = timestamp
+        
+        # Emit individual trade updates for real-time updates
+        socketio.emit("stock_update", {
+            "symbol": symbol,
+            "price": price,
+            "change": change,
+            "timestamp": timestamp
+        })
+
+def on_error(ws, error):
+    print(f"WebSocket error: {error}")
+    socketio.emit("error", {"message": str(error)})
+
+def on_close(ws, code, reason):
+    socketio.emit("disconnected", {"code": code, "reason": reason})
+
+# --------------------------------------------------
+# BACKGROUND THREAD TO RUN FINNHUB WS
+# --------------------------------------------------
+def start_finnhub_ws():
+    url = f"wss://ws.finnhub.io?token={FINNHUB_TOKEN}"
+
+    # Keep the loop alive forever, reconnecting on errors/close
+    while True:
+        ws = websocket.WebSocketApp(
+            url,
+            on_open=on_open,
+            on_message=on_message,
+            on_error=on_error,
+            on_close=on_close
+        )
+
+        # run_forever takes ping args so we send a ws ping every 30s
+        try:
+            ws.run_forever(
+                ping_interval=30,
+                ping_timeout=10,
+            )
+        except Exception as e:
+            app.logger.warning(f"WebSocket run_forever threw: {e}")
+
+        # If we get here, the socket has closed or errored — wait and reconnect
+        app.logger.info("Finnhub socket closed. Reconnecting in 5s…")
+        time.sleep(5)
+
+@app.route("/api/symbols")
+def symbols():
+    return jsonify(SUBSCRIBE_SYMBOLS)
+
+@app.route("/api/stocks")
+def stocks():
+    # start with whatever live data you have
+    data = { s: latest_stock_data.get(s, {}) for s in SUBSCRIBE_SYMBOLS }
+
+    # ensure every entry has basic fields
+    for sym, entry in data.items():
+        entry.setdefault("symbol", sym)
+        entry.setdefault("name", STOCK_METADATA.get(sym, {}).get("name", sym))
+        entry.setdefault("price", 0)
+        entry.setdefault("change", 0)
+        entry.setdefault("volume", 0)
+    return jsonify(list(data.values()))
+
+
+def init_app():
+    # Create a new collection for the cache
+    stock_cache_collection = db["stock_cache"]
+    
+    # Initialize the cache with all your stocks and periods
+    cache = StockDataCache(
+        db=db,
+        SUBSCRIBE_SYMBOLS=SUBSCRIBE_SYMBOLS,  # Your existing stock list
+        periods=PERIODS,        # Your existing periods list
+        cache_dir='./stock_cache'  # Store file cache here
+    )
+    
+    
+    # Store it on the app for access in routes
+    app.config['STOCK_CACHE'] = cache
+    
+    # Start background updates
+    cache_thread = cache.start_background_updates()
+    return app
+
 
 # Background data fetching
 def fetch_all_stocks():
@@ -414,21 +659,54 @@ def trade(current_user):
 
     else:
         return jsonify({'error': 'Invalid tradeType. Must be BUY or SELL.'}), 400
-
-@app.route("/api/ask", methods=["POST"])
-def ask_assistant():
-    try:
-        data = request.get_json()
-        query = data.get("query") if data else None
-
-        if not query:
-            return jsonify({"error": "The 'query' field is required."}), 400
-        
-        response_text = chatbot.get_response(query)
-        return jsonify({"response": response_text})
     
-    except Exception as e:
-        return jsonify({"error": f"Error processing request: {e}"}), 500
+
+model = genai.GenerativeModel("gemini-2.0-flash")
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    user_id = get_user_id()
+    history = load_history(user_id)[-4:]
+    perf = compute_portfolio_performance(user_id)
+    portfolio_summary = format_summary(perf)
+    prompt = build_prompt(history, portfolio_summary, request.json['message'])
+    try:
+        resp = gemini.complete(prompt, temperature=0.7, max_tokens=512)
+    except RateLimitError:
+        return {"error": "Service busy—please retry in a few seconds."}, 429
+    save_history(user_id, request.json['message'], resp)
+    return {"reply": resp}
+
+
+def get_user_id():
+    # This function should return the user ID from the JWT token
+    # For now, we'll just return a dummy user ID
+    return "dummy_user_id"
+def load_history(user_id):
+    # This function should load the chat history for the user from the database
+    # For now, we'll just return an empty list
+    return []
+def compute_portfolio_performance(user_id):
+    # This function should compute the portfolio performance for the user
+    # For now, we'll just return a dummy performance
+    return {
+        "total_value": 10000,
+        "daily_return": 0.01,
+        "weekly_return": 0.05,
+        "monthly_return": 0.10
+    }
+def format_summary(perf):
+    # This function should format the portfolio performance summary
+    # For now, we'll just return a dummy summary
+    return {
+        "total_value": perf["total_value"],
+        "daily_return": perf["daily_return"],
+        "weekly_return": perf["weekly_return"],
+        "monthly_return": perf["monthly_return"]
+    }
+def build_prompt(history, portfolio_summary, user_message):
+    # This function should build the prompt for the generative model
+    # For now, we'll just return a dummy prompt
+    return f"User message: {user_message}\nPortfolio summary: {portfolio_summary}\nChat history: {history}"
 
 # Updated Prediction Endpoint
 @app.route("/api/predict", methods=["POST"])
@@ -496,5 +774,17 @@ if __name__ == '__main__':
     update_thread = threading.Thread(target=update_stock_data)
     update_thread.daemon = True
     update_thread.start()
+    app=init_app()
+    threading.Thread(target=start_finnhub_ws, daemon=True).start()
+
+    # Option 1: Use socketio.run with additional parameters
+    socketio.run(
+        app,
+        host="0.0.0.0",
+        port=5000,
+        debug=False,
+        use_reloader=False,
+        allow_unsafe_werkzeug=True  # Add this parameter
+    )
     
     app.run(debug=True)
