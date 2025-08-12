@@ -1,103 +1,101 @@
-import os
-import pandas as pd
-import numpy as np
-import joblib
-import tensorflow as tf
+# forecast.py
+
+import json
+from datetime import timedelta, datetime
 import yfinance as yf
+from openai import OpenAI
 
-class StockPredictor:
-    def __init__(self, cache=None):
-        self.model = tf.keras.models.load_model('./models/stock_model.keras')
-        self.scalers = joblib.load('./models/scalers.joblib')
-        self.lookback = 60  # Must match the training window
-        self.cache = cache
+# Make sure you've already done: openai.api_key = os.getenv("OPENAI_API_KEY") in othermain.py
 
-    def fetch_historical_data(self, ticker, period='6mo'):
-        key = f"historical_{ticker}"
-        # Check the shared cache first.
-        if self.cache:
-            data = self.cache.get(key)
-            if data is not None:
-                return data
+def get_stock_forecast(openai_key: str, ticker_symbol: str, forecast_period: str):
+    """
+    Fetch last 60 days of closes and ask GPT-4 to predict the next 3/7/15/30 days,
+    returning a JSON object with historical data and predictions.
+    """
+    print(f"Starting forecast for {ticker_symbol} with period {forecast_period}")  # Debug log
+    
+    # Map shortcuts to days
+    period_map = {"3d": 3, "7d": 7, "15d": 15, "1m": 30}
+    days = period_map.get(forecast_period.lower())
+    if days is None:
+        print(f"Invalid forecast period: {forecast_period}")  # Debug log
+        raise ValueError("forecast_period must be one of: " + ", ".join(period_map.keys()))
 
-        # Try reading from a JSON file in ./data
-        json_path = f'./data/{ticker}_historical.json'
-        if os.path.exists(json_path):
-            try:
-                data = pd.read_json(json_path, orient='records', convert_dates=True)
-                if 'Date' in data.columns:
-                    data.set_index('Date', inplace=True)
-                    data.index = pd.to_datetime(data.index)
-                if self.cache:
-                    self.cache[key] = data
-                return data
-            except Exception as e:
-                print(f"Error reading JSON for {ticker}: {e}")
+    # Download history
+    try:
+        print(f"Fetching history for {ticker_symbol}")  # Debug log
+        stock = yf.Ticker(ticker_symbol)
+        hist = stock.history(period="60d", interval="1d")["Close"]
+        if hist.empty:
+            print(f"No historical data found for {ticker_symbol}")  # Debug log
+            return {"error": f"No historical data for {ticker_symbol}"}
+        print(f"Successfully fetched {len(hist)} days of history")  # Debug log
+    except Exception as e:
+        print(f"Error fetching history: {str(e)}")  # Debug log
+        return {"error": f"Error fetching data: {str(e)}"}
 
-        # Fallback: fetch via yfinance
-        data = yf.Ticker(ticker).history(period=period)
-        if data.empty:
-            raise ValueError(f"No historical data fetched for {ticker}")
-        try:
-            data_reset = data.reset_index()
-            data_reset.to_json(json_path, orient='records', date_format='iso')
-        except Exception as e:
-            print(f"Error saving JSON for {ticker}: {e}")
-        if self.cache:
-            self.cache[key] = data
-        return data
+    # Build dates and context
+    last_date = hist.index[-1].date()
+    future_dates = [(last_date + timedelta(days=i)).isoformat() for i in range(1, days+1)]
+    context = "\n".join(f"{d.date().isoformat()}: {p:.2f}" for d, p in zip(hist.index, hist.values))
 
-    def _get_features(self, data):
-        df = data.copy()
-        df['SMA_20'] = df['Close'].rolling(20).mean().ffill()
-        delta = df['Close'].diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-        df['RSI'] = 100 - (100 / (1 + (gain.rolling(14).mean() / loss.rolling(14).mean())))
-        df['Volatility'] = df['Close'].pct_change().rolling(20).std() * np.sqrt(252)
-        return df[['Close', 'SMA_20', 'RSI', 'Volatility']].dropna()
+    # Build prompt
+    prompt = (
+        f"Here are the last 60 days of {ticker_symbol} closing prices:\n"
+        f"{context}\n\n"
+        f"Predict the closing price for these upcoming dates:\n"
+        f"{future_dates}\n\n"
+        "Respond **only** with a JSON array in this exact format:\n"
+        "[\n"
+        "  {\"date\": \"YYYY-MM-DD\", \"predicted_close\": 123.45},\n"
+        "  ...\n"
+        "]\n"
+        "Do not include any other text."
+    )
 
-    def predict(self, ticker, period='6mo'):
-        # Fetch historical data with the given period (default 6mo for sufficient history)
-        data = self.fetch_historical_data(ticker, period)
-        if len(data) < self.lookback:
-            raise ValueError(f"Need at least {self.lookback} days of data for {ticker}")
-        features = self._get_features(data)
-        scaler = self.scalers.get(ticker)
-        if not scaler:
-            raise ValueError(f"No scaler found for {ticker}")
-        scaled = scaler.transform(features[-self.lookback:])
-        prediction = self.model.predict(scaled.reshape(1, self.lookback, -1))
-        dummy = np.zeros((prediction.shape[1], 4))
-        dummy[:, 0] = prediction[0]
-        predicted_prices = scaler.inverse_transform(dummy)[:, 0]
+    # Call OpenAI
+    try:
+        print("Calling OpenAI API")  # Debug log
+        OpenAI.api_key = openai_key
+        client = OpenAI()
+        resp = client.chat.completions.create(
+            model="gpt-4",
+            temperature=0.0,
+            messages=[
+                {"role": "system", "content": "You are a financial forecasting assistant. Output valid JSON and nothing else."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        raw = resp.choices[0].message.content.strip()
+        print("Received response from OpenAI")  # Debug log
+    except Exception as e:
+        print(f"Error calling OpenAI: {str(e)}")  # Debug log
+        return {"error": f"Error getting prediction: {str(e)}"}
+
+    # Parse JSON
+    try:
+        predictions = json.loads(raw)
+        print(f"Successfully parsed {len(predictions)} predictions")  # Debug log
         
-        # Prepare historical dates and prices for the response.
-        historical_dates = data.index.strftime("%Y-%m-%d").tolist()
-        historical_prices = data["Close"].tolist()
-        
-        # Map predicted prices to fixed future intervals:
-        # next_day (1d), one_week (5d), one_month (1mo), three_months (3mo)
-        predictions = {
-            "next_day": float(predicted_prices[0]),
-            "one_week": float(predicted_prices[5]) if len(predicted_prices) > 5 else None,
-            "one_month": float(predicted_prices[20]) if len(predicted_prices) > 20 else None,
-            "three_months": float(predicted_prices[60]) if len(predicted_prices) > 60 else None
+        # Format response for frontend (return all predicted points)
+        response = {
+            "historical_dates": [d.date().isoformat() for d in hist.index],
+            "historical_prices": hist.values.tolist(),
+            "predicted_dates": [p["date"] for p in predictions],
+            "predicted_prices": [p["predicted_close"] for p in predictions],
+            "extra_info": {
+                "last_updated": datetime.now().isoformat(),
+                "confidence": "High",  # You could make this dynamic based on model confidence
+                "model": "GPT-4"
+            }
         }
-        
-        # Extra info: current price and percent change.
-        current_price = historical_prices[-1]
-        previous_price = historical_prices[-2] if len(historical_prices) >= 2 else current_price
-        percent_change = ((current_price - previous_price) / previous_price * 100) if previous_price != 0 else 0
-        extra_info = {
-            "current_price": current_price,
-            "percent_change": percent_change,
-            "ticker": ticker
-        }
-        
-        return {
-            "historical_dates": historical_dates,
-            "historical_prices": historical_prices,
-            "predictions": predictions,
-            "extra_info": extra_info
-        }
+        print("Successfully formatted response")  # Debug log
+        print(f"Response: {response}")  # Debug log
+        return response
+    except json.JSONDecodeError as e:
+        print(f"Error parsing JSON: {str(e)}")  # Debug log
+        print(f"Raw response: {raw}")  # Debug log
+        return {"error": "Failed to parse JSON", "raw_response": raw}
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")  # Debug log
+        return {"error": f"Unexpected error: {str(e)}"}

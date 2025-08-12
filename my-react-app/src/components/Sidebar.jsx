@@ -230,7 +230,6 @@ function Sidebar() {
               { icon: <BarChart3 />, label: "Dashboard", path: "/dashboard" },
               { icon: <Wallet />, label: "Portfolio", path: "/portfolio" },
               { icon: <Brain />, label: "AI Prediction", path: "/prediction" },
-              { icon: <Robot />, label: "Trade Simulator", path: "/simulator" },
             ].map((item, index) => (
               <Link
                 key={index}

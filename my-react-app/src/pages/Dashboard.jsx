@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { io } from "socket.io-client";
 import {
   LineChart,
   BarChart3,
@@ -18,29 +19,60 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import "../app.css";
-
 const symbolToDomain = {
-  AAPL: "apple.com",
-  MSFT: "microsoft.com",
+  AAPL:  "apple.com",
+  MSFT:  "microsoft.com",
+  NVDA:  "nvidia.com",
+  AMZN:  "amazon.com",
+  AVGO:  "broadcom.com",
+  META:  "meta.com",
+  NFLX:  "netflix.com",
+  COST:  "costco.com",
+  TSLA:  "tesla.com",
   GOOGL: "google.com",
-  AMZN: "amazon.com",
-  META: "meta.com",
-  NVDA: "nvidia.com",
-  TSLA: "tesla.com",
-  JPM: "jpmorganchase.com",
-  V: "visa.com",
-  WMT: "walmart.com",
-  UNH: "unitedhealthgroup.com",
-  JNJ: "jnj.com",
-  MA: "mastercard.com",
-  PG: "pg.com",
-  HD: "homedepot.com",
-  BAC: "bankofamerica.com",
-  KO: "coca-cola.com",
-  DIS: "disney.com",
-  PFE: "pfizer.com",
-  CSCO: "cisco.com",
+  GOOG:  "google.com",
+  TMUS:  "t-mobile.com",
+  PLTR:  "palantir.com",
+  CSCO:  "cisco.com",
+  LIN:   "linde.com",
+  ISRG:  "intuitivesurgical.com",
+  PEP:   "pepsico.com",
+  INTU:  "intuit.com",
+  BKNG:  "bookingholdings.com",
+  ADBE:  "adobe.com",
+  AMD:   "amd.com",
+  AMGN:  "amgen.com",
+  QCOM:  "qualcomm.com",
+  TXN:   "ti.com",
+  HON:   "honeywell.com",
+  GILD:  "gilead.com",
+  VRTX:  "vrtx.com",
+  CMCSA: "comcast.com",
+  PANW:  "paloaltonetworks.com",
+  ADP:   "adp.com",
+  AMAT:  "appliedmaterials.com",
+  MELI:  "mercadolibre.com",
+  CRWD:  "crowdstrike.com",
+  ADI:   "analog.com",
+  SBUX:  "starbucks.com",
+  LRCX:  "lamresearch.com",
+  MSTR:  "microstrategy.com",
+  KLAC:  "kla.com",
+  MDLZ:  "mondelezinternational.com",
+  MU:    "micron.com",
+  INTC:  "intel.com",
+  APP:   "applovin.com",
+  CTAS:  "cintas.com",
+  CDNS:  "cadence.com",
+  ORLY:  "oreillyauto.com",
+  FTNT:  "fortinet.com",
+  DASH:  "doordash.com",
+  CEG:   "constellation.com",
+  SNPS:  "synopsys.com",
+  PDD:   "pinduoduo.com"
 };
+
+
 
 function Dashboard() {
   const [stocks, setStocks] = useState([]);
@@ -48,12 +80,15 @@ function Dashboard() {
   const [chartData, setChartData] = useState([]);
   const [chartPeriod, setChartPeriod] = useState("1W");
   const [selectedSymbol, setSelectedSymbol] = useState("AAPL");
+  const [socket, setSocket] = useState(null);
+  const [connected, setConnected] = useState(false);
   const [portfolioData, setPortfolioData] = useState({
     totalValue: 0,
     dailyProfit: 0,
     totalValueChange: 0,
     dailyProfitChange: 0
   });
+
 
   // Get auth headers for API calls
   const getAuthHeaders = () => {
@@ -63,7 +98,33 @@ function Dashboard() {
       'Authorization': token ? `Bearer ${token}` : ''
     };
   };
-
+  const updateStock = (symbol, price, changePercent) => {
+  setStocks(prev => {
+    const stockIndex = prev.findIndex(stock => stock.symbol === symbol);
+    
+    if (stockIndex === -1) return prev;
+    
+    const newStocks = [...prev];
+    const stock = newStocks[stockIndex];
+    
+    newStocks[stockIndex] = {
+      ...stock,
+      price: price,
+      change: changePercent, // Use the changePercent directly
+      recentlyUpdated: true,
+    };
+    
+    setTimeout(() => {
+      setStocks(current => 
+        current.map(s => 
+          s.symbol === symbol ? { ...s, recentlyUpdated: false } : s
+        )
+      );
+    }, 2000);
+    
+    return newStocks;
+  });
+};
   // Fetch portfolio data
   useEffect(() => {
     const fetchPortfolio = async () => {
@@ -93,6 +154,47 @@ function Dashboard() {
   }, []);
 
   useEffect(() => {
+    // Only set up socket if we have loaded initial stocks
+    if (loading) return;
+    
+    // Create socket connection
+    const newSocket = io("http://localhost:5000", {
+      transports: ["websocket"]  // force WebSocket transport
+    });
+    
+    // Socket event handlers
+    newSocket.on("connect", () => {
+      console.log("Socket.IO connected!");
+      setConnected(true);
+    });
+    
+    newSocket.on("stock_update", (data) => {
+      console.log("Received stock update:", data);
+      updateStock(data.symbol, data.price, data.is_fallback);
+    });
+    
+    newSocket.on("disconnect", () => {
+      console.log("Socket.IO disconnected.");
+      setConnected(false);
+    });
+    
+    newSocket.on("error", (error) => {
+      console.error("Socket.IO error:", error);
+    });
+    
+    // Store socket in state
+    setSocket(newSocket);
+    
+    // Clean up on unmount
+    return () => {
+      if (newSocket) {
+        newSocket.disconnect();
+      }
+    };
+  }, [loading]); // Only run when loading state changes
+
+
+  useEffect(() => {
     const fetchHistory = async () => {
       try {
         const response = await fetch(
@@ -113,42 +215,41 @@ function Dashboard() {
     fetchHistory();
   }, [selectedSymbol, chartPeriod]);
 
-  // Fetch data from Flask API
-  useEffect(() => {
-    const fetchStocks = async () => {
-      try {
-        const response = await fetch("http://localhost:5000/api/stocks");
-        const data = await response.json();
+  // Replace the data transformation in useEffect (around line 150)
+useEffect(() => {
+  const fetchStocks = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/api/stocks");
+      const data = await response.json();
 
-        // Transform API data to match mock data structure
-        const transformedData = data.map((stock) => ({
-          symbol: stock.symbol,
-          name: stock.name,
-          price: stock.close,
-          change: stock.change,
-          volume: new Intl.NumberFormat("en-US", {
-            notation: "compact",
-            maximumFractionDigits: 1,
-          }).format(stock.volume),
-          logo: symbolToDomain[stock.symbol]
-            ? `https://logo.clearbit.com/${
-                symbolToDomain[stock.symbol]
-              }?size=48`
-            : null,
-        }));
+      // Fix the data mapping - your API returns different property names
+      const transformedData = data.map((stock) => ({
+        symbol: stock.symbol,
+        name: stock.name,
+        price: stock.price,        // Changed from stock.close to stock.price
+        change: stock.changePercent, // Changed from stock.change to stock.changePercent  
+        volume: new Intl.NumberFormat("en-US", {
+          notation: "compact",
+          maximumFractionDigits: 1,
+        }).format(stock.volume),
+        logo: symbolToDomain[stock.symbol]
+          ? `https://logo.clearbit.com/${symbolToDomain[stock.symbol]}?size=48`
+          : null,
+      }));
 
-        setStocks(transformedData);
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching stock data:", error);
-        setLoading(false);
-      }
-    };
+      console.log("Transformed data:", transformedData); // Add this for debugging
+      setStocks(transformedData);
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching stock data:", error);
+      setLoading(false);
+    }
+  };
 
-    fetchStocks();
-    const interval = setInterval(fetchStocks, 60000);
-    return () => clearInterval(interval);
-  }, []);
+  fetchStocks();
+  const interval = setInterval(fetchStocks, 60000);
+  return () => clearInterval(interval);
+}, []);
 
   if (loading) {
     return (
@@ -277,36 +378,41 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Top Movers */}
-        <div className="rounded-xl p-4 sm:p-6 bg-white/5 backdrop-blur-md border border-white/10">
-          <h2 className="text-lg sm:text-xl font-bold mb-4">Top Movers</h2>
-          <div className="space-y-3 sm:space-y-4">
+        <div
+          className="
+            rounded-xl p-6
+            bg-white/5 backdrop-blur-md border border-white/10
+          "
+        >
+          <h2 className="text-xl font-bold mb-4">Top Movers</h2>
+          <div className="space-y-4">
             {[...stocks]
               .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))
               .slice(0, 3)
               .map((stock) => (
                 <div
                   key={stock.symbol}
-                  className="flex items-center justify-between p-3 sm:p-4 bg-white/5 rounded-lg"
+                  className={`
+                    flex items-center justify-between p-3 bg-white/5 rounded-lg
+                    ${stock.recentlyUpdated ? 'animate-pulse bg-blue-900/30' : ''}
+                  `}
                 >
                   <div>
-                    <div className="font-medium text-sm sm:text-base">{stock.symbol}</div>
-                    <div className="text-xs sm:text-sm text-gray-400">{stock.name}</div>
+                    <div className="font-medium">{stock.symbol}</div>
+                    <div className="text-sm text-gray-400">{stock.name}</div>
                   </div>
                   <div className="text-right">
-                    <div className="font-medium text-sm sm:text-base">
-                      ${stock.price?.toFixed(2) || "0.00"}
-                    </div>
+                    <div className="font-medium">${stock.price?.toFixed(2) || "0.00"}</div>
                     <div
                       className={`
-                        text-xs sm:text-sm flex items-center gap-1
+                        text-sm flex items-center gap-1
                         ${stock.change >= 0 ? "text-green-500" : "text-red-500"}
                       `}
                     >
                       {stock.change >= 0 ? (
-                        <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <ArrowUp className="w-4 h-4" />
                       ) : (
-                        <ArrowDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <ArrowDown className="w-4 h-4" />
                       )}
                       {Math.abs(stock.change).toFixed(2)}%
                     </div>
@@ -318,74 +424,86 @@ function Dashboard() {
       </div>
 
       {/* Watchlist Table */}
-      <div className="rounded-xl p-4 sm:p-6 mt-4 sm:mt-6 bg-white/5 backdrop-blur-md border border-white/10">
-        <h2 className="text-lg sm:text-xl font-bold mb-4 text-gray-100">Watchlist</h2>
-        <div className="overflow-x-auto -mx-4 sm:-mx-6">
-          <div className="inline-block min-w-full align-middle">
-            <table className="min-w-full">
-              <thead>
-                <tr className="text-gray-400 border-b border-white/10">
-                  <th className="text-left text-xs sm:text-sm font-semibold p-4 sm:p-6">Symbol</th>
-                  <th className="text-left text-xs sm:text-sm font-semibold p-4 sm:p-6">Name</th>
-                  <th className="text-right text-xs sm:text-sm font-semibold p-4 sm:p-6">Price</th>
-                  <th className="text-right text-xs sm:text-sm font-semibold p-4 sm:p-6">24h Change</th>
-                  <th className="text-right text-xs sm:text-sm font-semibold p-4 sm:p-6">Volume</th>
-                  <th className="text-right text-xs sm:text-sm font-semibold p-4 sm:p-6">Trade</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {stocks.map((stock) => (
-                  <tr
-                    key={stock.symbol}
-                    className="hover:bg-white/5 transition-colors"
-                  >
-                    <td className="py-3 sm:py-4 px-4 sm:px-6 font-medium text-xs sm:text-sm">
-                      <div className="flex items-center gap-2">
-                        {stock.logo ? (
-                          <img
-                            src={stock.logo}
-                            alt={stock.symbol}
-                            className="w-6 h-6 sm:w-8 sm:h-8 rounded"
-                            onError={(e) => {
-                              e.target.style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-500/10 rounded flex items-center justify-center">
-                            <LineChart className="w-3 h-3 sm:w-4 sm:h-4 text-blue-400" />
-                          </div>
-                        )}
-                        {stock.symbol}
+      <div className="rounded-xl p-6 mt-6 bg-white/5 backdrop-blur-md border border-white/10">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-100">Watchlist</h2>
+          {connected && (
+            <div className="flex items-center text-sm text-green-400">
+              <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
+              Live Market Data
+            </div>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-gray-400 border-b border-white/10">
+                <th className="pb-4 text-left">Symbol</th>
+                <th className="pb-4 text-left">Name</th>
+                <th className="pb-4 text-right">Price</th>
+                <th className="pb-4 text-right">24h Change</th>
+                <th className="pb-4 text-right">Volume</th>
+                <th className="pb-4 text-right">Trade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stocks.map((stock) => (
+                <tr
+                  key={stock.symbol}
+                  className={`
+                    border-b border-white/5 hover:bg-white/5 transition-colors
+                    ${stock.recentlyUpdated ? 'bg-blue-900/20' : ''}
+                  `}
+                >
+                  <td className="py-4 font-medium flex items-center">
+                    {stock.logo ? (
+                      <img
+                        src={stock.logo}
+                        alt={stock.symbol}
+                        className="table-icon"
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="table-icon bg-blue-500/10 flex items-center justify-center">
+                        <LineChart className="w-4 h-4 text-blue-400" />
                       </div>
-                    </td>
-                    <td className="p-4 sm:p-6 text-gray-400 text-xs sm:text-sm">{stock.name}</td>
-                    <td className="p-4 sm:p-6 text-right text-xs sm:text-sm">
-                      ${stock.price?.toFixed(2) || "0.00"}
-                    </td>
-                    <td className={`p-4 sm:p-6 text-right text-xs sm:text-sm ${stock.change >= 0 ? "text-green-500" : "text-red-500"}`}>
-                      {stock.change >= 0 ? "+" : ""}
-                      {Math.abs(stock.change || 0).toFixed(2)}%
-                    </td>
-                    <td className="p-4 sm:p-6 text-right text-gray-400 text-xs sm:text-sm">
-                      {stock.volume || "0"}
-                    </td>
-                    <td className="p-4 sm:p-6 text-right">
-                      <Link
-                        to={`/trade/${stock.symbol}?currentValue=${stock.price}&changeValue=${stock.change}&currentPercent=${stock.change}`}
-                        className="px-3 sm:px-4 py-1 sm:py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors text-xs sm:text-sm"
-                      >
-                        Trade
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    )}
+                    {stock.symbol}
+                  </td>
+                  <td className="py-4 text-gray-400">{stock.name}</td>
+                  <td className={`py-4 text-right ${stock.recentlyUpdated ? 'text-white font-bold' : ''}`}>
+                    ${stock.price?.toFixed(2) || "0.00"}
+                  </td>
+                  <td
+                    className={`py-4 text-right ${
+                      stock.change >= 0 ? "text-green-500" : "text-red-500"
+                    }`}
+                  >
+                    {stock.change >= 0 ? "+" : ""}
+                    {Math.abs(stock.change || 0).toFixed(2)}%
+                  </td>
+                  <td className="py-4 text-right text-gray-400">
+                    {stock.volume || "0"}
+                  </td>
+                  <td className="py-4 text-right">
+                    <Link
+                      to={`/trade/${stock.symbol}?currentValue=${stock.price}&changeValue=${stock.change}&currentPercent=${stock.change}`}
+                      className="px-4 py-1 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                    >
+                      Trade
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   );
 }
+
 
 export default Dashboard;

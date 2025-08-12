@@ -52,18 +52,23 @@ function Chat() {
     try {
       setChatHistory(prev => [...prev, { role: 'user', content: userMsg }]);
 
-      const response = await fetch('http://localhost:5000/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userMsg })
-      });
+      const token = localStorage.getItem('token'); // or however you store your auth token
+
+const response = await fetch('http://localhost:5000/api/chat/recommend', {
+  method: 'POST',
+  headers: { 
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}` // Add this line
+  },
+  body: JSON.stringify({ query: userMsg })
+});
     
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
     
       const data = await response.json();
-      setChatHistory(prev => [...prev, { role: 'assistant', content: data.response }]);
+      setChatHistory(prev => [...prev, { role: 'assistant', content: data.recommendation }]);
     } catch (error) {
       console.error('Error fetching assistant response:', error);
       setChatHistory(prev => [

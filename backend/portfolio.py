@@ -11,7 +11,7 @@ import yfinance as yf
 
 # Load environment variables
 load_dotenv()
-JWT_SECRET = os.getenv('JWT_SECRET', 'finsightDB')
+JWT_SECRET = os.getenv('JWT_SECRET', 'FinsightDB')
 
 def token_required(f):
     @wraps(f)

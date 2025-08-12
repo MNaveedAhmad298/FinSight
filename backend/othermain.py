@@ -7,11 +7,12 @@ from cachetools import TTLCache
 # from chatbot import FinSightAssistant
 from pymongo import MongoClient
 from portfolio import Portfolio
-from predictor import StockPredictor
+from predictor import get_stock_forecast
+from openai import OpenAI
 from flask_bcrypt import Bcrypt
 import jwt
-# import datetime
-from datetime import datetime
+import datetime
+from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 import smtplib
@@ -26,12 +27,13 @@ import json
 from stock_cache import StockDataCache
 
 
+
 load_dotenv()
 # chatbot = FinSightAssistant()
 
 # JWT Configuration
 JWT_SECRET = os.getenv('JWT_SECRET', 'your-secret-key')  # Use environment variable in production
-
+OpenAI.api_key = os.getenv("OPENAI_API_KEY")
 # Database connection
 connection_string = (
     "mongodb+srv://rayanharoon:mongo123@cluster0.vg3h0.mongodb.net/test?tls=true"
@@ -41,16 +43,17 @@ try:
     db = client.FinSight
     print("Connected to the database")
     stocks_collection = db.stocks
-    users_collection = db.users  # Add users collection
+    users_collection = db.users  
 except Exception as e:
     print(f"Error connecting to the database: {e}")
 
 app = Flask(__name__)
 CORS(app, resources={
-    r"/api/*": {"origins": "http://localhost:5173"},
-    r"/portfolio": {"origins": "http://localhost:5173"}  # Add this line to allow /portfolio endpoint
+    r"/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]},  
+    r"/api/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]},
+    r"/portfolio": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]}
 })
-bcrypt = Bcrypt(app)  # Initialize bcrypt for password hashing
+bcrypt = Bcrypt(app)  
 
 portfolio_instance = Portfolio(db)
 app.register_blueprint(portfolio_instance.blueprint)
@@ -64,7 +67,6 @@ STOCKS = [
 # In-memory caches for live data
 CACHE_DURATION = 60  # 1 minute for stock summary
 cache = TTLCache(maxsize=20, ttl=CACHE_DURATION)
-STOCK_CACHE = TTLCache(maxsize=20, ttl=3600)
 
 FINNHUB_TOKEN     = "d0gicf1r01qhao4trdqgd0gicf1r01qhao4trdr0"
 SUBSCRIBE_SYMBOLS = ["AAPL",  "MSFT",  
@@ -119,7 +121,7 @@ SUBSCRIBE_SYMBOLS = ["AAPL",  "MSFT",
 
 # Stock metadata for better display
 STOCK_METADATA = {
-    "AAPL":  {"name": "Apple Inc."},
+    "AAPL":  {"name": "Apple Inc"},
     "MSFT":  {"name": "Microsoft Corporation"},
     "NVDA":  {"name": "NVIDIA Corporation"},
     "AMZN":  {"name": "Amazon.com, Inc."},
@@ -163,7 +165,7 @@ STOCK_METADATA = {
     "APP":   {"name": "AppLovin Corporation"},
     "CTAS":  {"name": "Cintas Corporation"},
     "CDNS":  {"name": "Cadence Design Systems, Inc."},
-    "ORLY":  {"name": "O’Reilly Automotive, Inc."},
+    "ORLY":  {"name": "O'Reilly Automotive, Inc."},
     "FTNT":  {"name": "Fortinet, Inc."},
     "DASH":  {"name": "DoorDash, Inc."},
     "CEG":   {"name": "Constellation Energy Corporation"},
@@ -176,7 +178,7 @@ PERIODS = ["1d","5d","1mo","6mo","1y","5y"]
 
 socketio = SocketIO(
     app,
-    cors_allowed_origins="*",
+    cors_allowed_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     async_mode="threading",
     logger=True,  # Enable logging for debugging
     engineio_logger=True  # Enable Engine.IO logging
@@ -225,6 +227,7 @@ def on_message(ws, message):
             "symbol": symbol,
             "price": price,
             "change": change,
+            "volume": volume,
             "timestamp": timestamp
         })
 
@@ -270,19 +273,49 @@ def symbols():
 
 @app.route("/api/stocks")
 def stocks():
-    # start with whatever live data you have
-    data = { s: latest_stock_data.get(s, {}) for s in SUBSCRIBE_SYMBOLS }
+    try:
+        # Check cache first
+        cached_data = cache.get("stocks")
+        if cached_data:
+            print("Returning cached data for /api/stocks")
+            return jsonify(cached_data)
 
-    # ensure every entry has basic fields
-    for sym, entry in data.items():
-        entry.setdefault("symbol", sym)
-        entry.setdefault("name", STOCK_METADATA.get(sym, {}).get("name", sym))
-        entry.setdefault("price", 0)
-        entry.setdefault("change", 0)
-        entry.setdefault("volume", 0)
-    return jsonify(list(data.values()))
+        print("Fetching fresh data from yfinance using batch method")
+        
+        # Use batch fetching for better performance
+        response_data = fetch_stocks_batch(SUBSCRIBE_SYMBOLS)
+        
+        # Debug: Print the first few items to see the structure
+        if response_data:
+            print("Sample stock data:", response_data[0])
+        
+        # Cache the results
+        cache["stocks"] = response_data
+        print(f"Successfully fetched and cached {len(response_data)} stocks")
 
-
+        return jsonify(response_data)
+        
+    except Exception as e:
+        print(f"Critical error in stocks endpoint: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return basic fallback with proper structure
+        fallback_data = []
+        for symbol in SUBSCRIBE_SYMBOLS:
+            fallback_data.append({
+                'symbol': symbol,
+                'name': STOCK_METADATA.get(symbol, {}).get("name", symbol),
+                'price': 100.0,  # Add some test values
+                'change': 1.5,
+                'changePercent': 1.5,
+                'volume': 1000000,
+                'is_live': False,
+                'last_updated': datetime.utcnow().isoformat(),
+                'error': 'Using fallback data'
+            })
+        
+        return jsonify(fallback_data), 206
 def init_app():
     # Create a new collection for the cache
     stock_cache_collection = db["stock_cache"]
@@ -401,12 +434,13 @@ def signup():
         "passwordHash": hashed_password,
         "role": "student",
         "emailVerified": False,
-        "registeredAt": datetime.datetime.utcnow(),
+        "registeredAt": datetime.utcnow(),
         "nickname": name,  # Initialize nickname with name
         "avatar": None     # Initialize empty avatar
     }
 
     result = users_collection.insert_one(user)
+    
     
     # Create an initial portfolio for the new user with some starting balance
     db.portfolios.insert_one({
@@ -428,7 +462,7 @@ def login():
     if user and bcrypt.check_password_hash(user['passwordHash'], password):
         token_payload = {
             'user_id': str(user['_id']),
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+            'exp': datetime.utcnow() + timedelta(hours=24)
         }
         token = jwt.encode(token_payload, JWT_SECRET, algorithm='HS256')
 
@@ -455,7 +489,7 @@ def forgot_password():
 
     token = jwt.encode({
         'email': email,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        'exp': datetime.utcnow() + timedelta(hours=1)
     }, JWT_SECRET, algorithm='HS256')
 
     reset_link = f"http://localhost:5173/reset-password?token={token}"
@@ -496,10 +530,7 @@ def reset_password():
 
     return jsonify({'message': 'Password reset successful.'}), 200
 
-# API Endpoints
-@app.route('/api/stocks')
-def get_stocks():
-    return jsonify(list(cache.get('stocks', {}).values()))
+
 
 @app.route('/api/history/<symbol>')
 def get_history(symbol):
@@ -659,75 +690,137 @@ def trade(current_user):
 
     else:
         return jsonify({'error': 'Invalid tradeType. Must be BUY or SELL.'}), 400
+
+
+#---------------------Predcit---------------------------#
+@app.route("/api/forecast", methods=["POST"])
+@app.route("/forecast", methods=["POST"])
+@token_required
+def forecast_stock(current_user):
+    data = request.get_json() or {}
+    symbol = data.get("symbol")
+    timeframe = data.get("timeframe", "3d")
+
+    # Validate inputs
+    if not symbol:
+        return jsonify({"error": "The 'symbol' field is required."}), 400
+    if symbol not in SUBSCRIBE_SYMBOLS:
+        return jsonify({"error": "Invalid stock symbol."}), 400
+    if timeframe not in ["3d", "7d", "15d", "1m"]:
+        return jsonify({"error": "Invalid timeframe. Must be one of: 3d, 7d, 15d, 1m"}), 400
+
+    # Delegate to forecast.py
+    result = get_stock_forecast(OpenAI.api_key, symbol, timeframe)
+    print(result)
+    return jsonify(result)
+
+#---------------------Chatbot---------------------------#
     
 
-model = genai.GenerativeModel("gemini-2.0-flash")
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    user_id = get_user_id()
-    history = load_history(user_id)[-4:]
-    perf = compute_portfolio_performance(user_id)
-    portfolio_summary = format_summary(perf)
-    prompt = build_prompt(history, portfolio_summary, request.json['message'])
-    try:
-        resp = gemini.complete(prompt, temperature=0.7, max_tokens=512)
-    except RateLimitError:
-        return {"error": "Service busy—please retry in a few seconds."}, 429
-    save_history(user_id, request.json['message'], resp)
-    return {"reply": resp}
+# Update the chat endpoint
+@app.route('/api/chat/recommend', methods=['POST'])
+@token_required
+def chat_recommend(current_user):
+    payload = request.get_json()
+    portfolio = db.portfolios.find_one({"user_id": current_user["_id"]})
+    if not portfolio:
+        return jsonify({"error": "Portfolio not found"}), 404
 
+    # load holdings and balance
+    holdings_cursor = db.portfolio_holdings.find({"portfolio_id": portfolio["_id"]})
+    holdings = {h["stock_symbol"]: h["quantity"] for h in holdings_cursor}
+    balance = portfolio.get("available_balance", 0.0)
 
-def get_user_id():
-    # This function should return the user ID from the JWT token
-    # For now, we'll just return a dummy user ID
-    return "dummy_user_id"
-def load_history(user_id):
-    # This function should load the chat history for the user from the database
-    # For now, we'll just return an empty list
-    return []
-def compute_portfolio_performance(user_id):
-    # This function should compute the portfolio performance for the user
-    # For now, we'll just return a dummy performance
-    return {
-        "total_value": 10000,
-        "daily_return": 0.01,
-        "weekly_return": 0.05,
-        "monthly_return": 0.10
-    }
-def format_summary(perf):
-    # This function should format the portfolio performance summary
-    # For now, we'll just return a dummy summary
-    return {
-        "total_value": perf["total_value"],
-        "daily_return": perf["daily_return"],
-        "weekly_return": perf["weekly_return"],
-        "monthly_return": perf["monthly_return"]
-    }
-def build_prompt(history, portfolio_summary, user_message):
-    # This function should build the prompt for the generative model
-    # For now, we'll just return a dummy prompt
-    return f"User message: {user_message}\nPortfolio summary: {portfolio_summary}\nChat history: {history}"
-
-# Updated Prediction Endpoint
-@app.route("/api/predict", methods=["POST"])
-def predict_stock():
-    try:
-        data = request.get_json()
-        symbol = data.get("symbol") if data else None
-        timeframe = data.get("timeframe", "1mo") if data else "3mo"
-
-        if not symbol:
-            return jsonify({"error": "The 'symbol' field is required."}), 400
-        
-        if symbol not in STOCKS:
-            return jsonify({"error": "Invalid stock symbol."}), 400
-
-        predictor = StockPredictor(cache=STOCK_CACHE)
-        prediction = predictor.predict(symbol, timeframe)
-        return jsonify(prediction)
+    advice = generate_portfolio_recommendation(
+        portfolio_id=str(portfolio["_id"]),
+        holdings=holdings,
+        available_balance=balance
+    )
+    return jsonify({"recommendation": advice})
     
+
+
+
+def generate_portfolio_recommendation(portfolio_id: str,
+                                      holdings: dict,
+                                      available_balance: float,
+                                      model: str = "gpt-4") -> str:
+    """
+    Fetch current prices, compute allocations, and ask OpenAI for
+    personalized investment advice.
+
+    Args:
+      portfolio_id:      the user's portfolio object ID (for context/logging)
+      holdings:          dict mapping stock symbols to share quantities
+                         e.g. {"AAPL": 10, "MSFT": 5}
+      available_balance: cash available to invest (in USD)
+      model:             which OpenAI chat model to call
+
+    Returns:
+      A plain-text recommendation including diversification strategies,
+      tactical allocations, and suggested future investments.
+    """
+    # 1. Fetch live prices and compute current value per holding
+    values = {}
+    total_value = available_balance
+    for symbol, qty in holdings.items():
+        try:
+            hist = yf.Ticker(symbol).history(period="1d")
+            price = hist["Close"].iloc[-1]
+        except Exception:
+            price = None
+        if price is not None:
+            values[symbol] = round(qty * price, 2)
+            total_value += qty * price
+        else:
+            values[symbol] = None
+
+    # 2. Compute allocation percentages
+    allocation = {
+        sym: round((val / total_value) * 100, 2) if val else 0
+        for sym, val in values.items()
+    }
+
+    # 3. Build chat messages
+    system_msg = {
+        "role": "system",
+        "content": (
+            "You are a knowledgeable financial advisor. "
+            "When given a user's portfolio breakdown, you provide clear, "
+            "actionable investment recommendations."
+        )
+    }
+    user_msg = {
+        "role": "user",
+        "content": (
+            f"Portfolio ID: {portfolio_id}\n"
+            f"Holdings value (USD):\n{json.dumps(values, indent=2)}\n"
+            f"Approx allocations (%):\n{json.dumps(allocation, indent=2)}\n"
+            f"Available cash: ${available_balance:,.2f}\n\n"
+            "Please provide:\n"
+            "1. An assessment of their diversification and concentration risks.\n"
+            "2. Recommendations to rebalance or hedge.\n"
+            "3. Suggestions for new investments or strategies for their cash.\n"
+            "4. Key risk considerations and exit points.\n"
+            "Respond in clear, concise language."
+        )
+    }
+
+    # 4. Call OpenAI ChatCompletion
+    try:
+        client = OpenAI()
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[system_msg, user_msg],
+            temperature=0.7,
+            max_tokens=500
+        )
+        return resp.choices[0].message.content.strip()
     except Exception as e:
-        return jsonify({"error": f"Error processing request: {e}"}), 500
+        return f"Error generating recommendation: {e}"
+
+
+
 
 @app.route('/api/profile', methods=['PUT'])
 @token_required
@@ -770,10 +863,27 @@ def update_profile(current_user):
         print(f"Error updating profile: {e}")
         return jsonify({'error': 'Failed to update profile'}), 500
 
+# Add Socket.IO error handler
+@socketio.on_error()
+def error_handler(e):
+    print(f"Socket.IO error: {str(e)}")
+    socketio.emit("error", {"message": "An error occurred with the WebSocket connection"})
+
+@socketio.on('connect')
+def handle_connect():
+    print("Client connected")
+    socketio.emit("connection_status", {"status": "connected"})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print("Client disconnected")
+
+
+
 if __name__ == '__main__':
-    update_thread = threading.Thread(target=update_stock_data)
-    update_thread.daemon = True
-    update_thread.start()
+    # update_thread = threading.Thread(target=update_stock_data)
+    # update_thread.daemon = True
+    # update_thread.start()
     app=init_app()
     threading.Thread(target=start_finnhub_ws, daemon=True).start()
 
@@ -786,5 +896,3 @@ if __name__ == '__main__':
         use_reloader=False,
         allow_unsafe_werkzeug=True  # Add this parameter
     )
-    
-    app.run(debug=True)

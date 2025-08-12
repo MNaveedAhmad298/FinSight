@@ -38,14 +38,13 @@ function AIPrediction() {
   // Timeframe options: label for display and value for API
   const timeFrames = [
     { label: '3 Days', value: '3d' },
-    { label: '1 Week', value: '1w' },
-    { label: '1 Month', value: '1mo' },
-    { label: '3 Months', value: '3mo' },
-    { label: '6 Months', value: '6mo' }
+    { label: '7 Days', value: '7d' },
+    { label: '15 Days', value: '15d' },
+    { label: '1 Month', value: '1m' }
   ];
 
   const [selectedStock, setSelectedStock] = useState(stocks[0].symbol);
-  const [selectedTimeFrame, setSelectedTimeFrame] = useState(timeFrames[2].value); // Default to 1 month
+  const [selectedTimeFrame, setSelectedTimeFrame] = useState(timeFrames[2].value); // Default to 15 days
   const [chartData, setChartData] = useState([]);
   const [extraInfo, setExtraInfo] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -55,9 +54,14 @@ function AIPrediction() {
   const handlePredict = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/predict', {
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch('http://localhost:5000/api/forecast', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ 
           symbol: selectedStock, 
           timeframe: selectedTimeFrame
@@ -65,113 +69,73 @@ function AIPrediction() {
       });
       
       const data = await response.json();
-      if (data.error) {
-        console.error("Error:", data.error);
+      console.log('Received prediction data:', data);
+      
+      // Check if we have required data
+      if (!data.historical_dates || !data.historical_prices || 
+          !data.predicted_dates || !data.predicted_prices) {
+        console.error("Missing required data fields");
         setLoading(false);
         return;
       }
-
-      // Extract historical data and predictions from API response
-      const histDates = data.historical_dates;
-      const histPrices = data.historical_prices;
       
-      // Get the last historical date for reference
-      const lastHistDate = new Date(histDates[histDates.length - 1]);
+      // Get the last historical date for the reference line
+      const lastHistDate = data.historical_dates[data.historical_dates.length - 1];
       setCurrentDate(lastHistDate);
-
-      // Create consistent chart data for historical part
-      const historicalDataPoints = histDates.map((date, idx) => ({
-        date: date,
-        value: histPrices[idx],
-        type: 'historical'
-      }));
-
-      // Create data points for predictions with proper spacing
-      // The backend returns fixed prediction periods regardless of timeframe
-      const predictionDataPoints = [];
       
-      // These prediction periods are hardcoded in the backend
-      const predictionPeriods = {
-        next_day: 1,
-        one_week: 7,
-        one_month: 30,
-        three_months: 90
-      };
+      // Format data for the chart - CORRECTED VERSION
+      let formattedData = [];
       
-      // Add prediction data points with their proper dates
-      Object.entries(data.predictions).forEach(([period, value]) => {
-        if (value !== null) {
-          const daysToAdd = predictionPeriods[period];
-          const predictionDate = new Date(lastHistDate);
-          predictionDate.setDate(predictionDate.getDate() + daysToAdd);
-          
-          predictionDataPoints.push({
-            date: predictionDate.toISOString().split('T')[0],
-            value: value,
-            type: 'prediction',
-            periodLabel: period.replace('_', ' ')
-          });
-        }
-      });
+      // Add historical data points
+      for (let i = 0; i < data.historical_dates.length; i++) {
+        formattedData.push({
+          date: data.historical_dates[i],
+          historicalValue: data.historical_prices[i],
+          predictedValue: null, // No predicted value for historical dates
+          type: 'historical'
+        });
+      }
       
-      // Filter chart data based on selected timeframe for better visualization
-      const timeframeMultiplier = getTimeframeMultiplier(selectedTimeFrame);
-      const filteredHistorical = timeframeMultiplier 
-        ? historicalDataPoints.slice(-timeframeMultiplier) 
-        : historicalDataPoints;
+      // Add prediction data points
+      for (let i = 0; i < data.predicted_dates.length; i++) {
+        formattedData.push({
+          date: data.predicted_dates[i],
+          historicalValue: null, // No historical value for prediction dates
+          predictedValue: data.predicted_prices[i],
+          type: 'prediction'
+        });
+      }
       
-      // Merge historical and prediction data
-      const allDataPoints = [...filteredHistorical, ...predictionDataPoints];
+      // Set extra info if available
+      if (data.extra_info) {
+        setExtraInfo(data.extra_info);
+      }
       
-      // Add a visualization trigger to show we're transitioning from historical to predicted
-      // by including the last historical point as the first prediction point
-      const transitionPoint = {
-        date: histDates[histDates.length - 1],
-        value: histPrices[histDates.length - 1],
-        type: 'prediction',
-        isTransition: true
-      };
+      // Sort by date to ensure chronological order
+      formattedData.sort((a, b) => new Date(a.date) - new Date(b.date));
       
-      // Format for recharts
-      // Sort to ensure chronological order
-      const formattedData = [
-        ...allDataPoints.filter(dp => dp.type === 'historical'), 
-        transitionPoint,
-        ...allDataPoints.filter(dp => dp.type === 'prediction' && !dp.isTransition)
-      ].sort((a, b) => new Date(a.date) - new Date(b.date));
-      
+      console.log('Formatted chart data:', formattedData);
       setChartData(formattedData);
-      setExtraInfo(data.extra_info);
+      
     } catch (error) {
       console.error("API call error:", error);
-    }
-    setLoading(false);
-  };
-
-  // Helper function to filter historical data based on timeframe
-  const getTimeframeMultiplier = (timeframe) => {
-    switch(timeframe) {
-      case '3d': return 3;
-      case '1w': return 7;
-      case '1mo': return 30;
-      case '3mo': return 90;
-      case '6mo': return 180;
-      default: return null; // Show all data
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Custom tooltip to show prediction period labels
+  // Custom tooltip to show prediction period labels - UPDATED
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
+      const value = data.historicalValue || data.predictedValue;
+      const isPrediction = data.type === 'prediction';
+      
       return (
         <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
           <p className="font-semibold">{data.date}</p>
           <p className="text-sm">
-            {data.type === 'prediction' && data.periodLabel 
-              ? `${data.periodLabel} prediction: $${data.value.toFixed(2)}` 
-              : `Price: $${data.value.toFixed(2)}`
-            }
+            {isPrediction ? 'Predicted' : 'Historical'} Price: ${value?.toFixed(2)}
           </p>
         </div>
       );
@@ -238,13 +202,14 @@ function AIPrediction() {
       {/* Extra Textual Information */}
       {extraInfo && (
         <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-4 mb-6">
-          <h2 className="text-xl font-bold mb-1">{extraInfo.ticker} Stock Information</h2>
-          <p>Current Price: ${extraInfo.current_price.toFixed(2)}</p>
-          <p>Percent Change: {extraInfo.percent_change.toFixed(2)}%</p>
+          <h2 className="text-xl font-bold mb-1">Prediction Information</h2>
+          <p>Last Updated: {new Date(extraInfo.last_updated).toLocaleString()}</p>
+          <p>Confidence: {extraInfo.confidence}</p>
+          {/* <p>Model: {extraInfo.model}</p> */}
         </div>
       )}
 
-      {/* Chart Section */}
+      {/* Chart Section - CORRECTED */}
       <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-4 h-[400px]">
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
@@ -254,45 +219,46 @@ function AIPrediction() {
                 dataKey="date" 
                 stroke="#6B7280" 
                 tickFormatter={formatXAxis}
-                minTickGap={30} // Prevent overcrowding of labels
+                minTickGap={30}
               />
               <YAxis 
                 stroke="#6B7280"
-                domain={['auto', 'auto']} // Auto-scale to data
+                domain={['auto', 'auto']}
               />
               <Tooltip content={<CustomTooltip />} />
               
-              {/* Historical Price Line */}
+              {/* Historical Price Line - Blue, Solid */}
               <Line 
                 type="monotone" 
-                dataKey="value" 
+                dataKey="historicalValue" 
                 stroke="#3B82F6" 
                 strokeWidth={2} 
                 dot={false}
                 activeDot={{ r: 6 }}
-                name="Stock Price" 
-                data={chartData.filter(item => item.type === 'historical')}
+                name="Historical Price"
+                connectNulls={false}
               />
               
-              {/* Predicted Price Line */}
+              {/* Predicted Price Line - Green, Dashed */}
               <Line 
                 type="monotone" 
-                dataKey="value" 
+                dataKey="predictedValue" 
                 stroke="#22c55e" 
                 strokeWidth={2} 
                 dot={true}
                 strokeDasharray="5 5" 
-                name="Predicted Price" 
-                data={chartData.filter(item => item.type === 'prediction')}
+                name="Predicted Price"
+                connectNulls={false}
               />
               
               {/* Add a reference line at the current date to visually separate historical/prediction */}
               {currentDate && (
                 <ReferenceLine 
-                  x={currentDate.toISOString().split('T')[0]} 
+                  x={currentDate} 
                   stroke="#ff6b6b" 
                   strokeWidth={2}
                   strokeDasharray="3 3"
+                  label={{ value: "Today", position: "top" }}
                 />
               )}
             </LineChart>

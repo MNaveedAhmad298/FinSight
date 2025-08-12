@@ -282,3 +282,25 @@ class StockDataCache:
         else:
             # If we STILL don't have data, raise an error
             raise Exception(f"Could not fetch data for {symbol} - {period}")
+
+    # def store_stock_data_in_db(self, symbol, period, data):
+    #     """
+    #     Store stock data in the database
+        
+    #     Args:
+    #         symbol: Stock symbol
+    #         period: Time period
+    #         data: Data to store
+    #     """
+    #     document = {
+    #         'symbol': symbol,
+    #         'period': period,
+    #         'data': data,
+    #         'last_updated': datetime.utcnow()
+    #     }
+        
+    #     self.db.stock_cache.update_one(
+    #         {'symbol': symbol, 'period': period},
+    #         {'$set': document},
+    #         upsert=True
+    #     )
