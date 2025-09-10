@@ -1,0 +1,13 @@
+flask==3.0.3
+flask-cors==4.0.1
+flask-bcrypt==1.0.1
+pymongo==4.8.0
+python-dotenv==1.0.1
+cachetools==5.3.3
+yfinance==0.2.52
+python-socketio==5.11.4
+flask-socketio==5.3.6
+eventlet==0.36.1
+PyJWT==2.9.0
+# Optional (only if you plan to use Gemini)
+google-generativeai==0.7.2

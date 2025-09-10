@@ -1,0 +1,605 @@
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
+import {
+  LineChart,
+  BarChart3,
+  Wallet,
+  Bell,
+  ArrowUp,
+  ArrowDown,
+} from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import "../app.css";
+import { apiGet, API_URL } from '../api';
+import { io } from "socket.io-client";
+import { useQuery } from '@tanstack/react-query';
+
+const symbolToDomain = {
+  AAPL:  "apple.com",
+  MSFT:  "microsoft.com",
+  NVDA:  "nvidia.com",
+  AMZN:  "amazon.com",
+  AVGO:  "broadcom.com",
+  META:  "meta.com",
+  NFLX:  "netflix.com",
+  COST:  "costco.com",
+  TSLA:  "tesla.com",
+  GOOGL: "google.com",
+  GOOG:  "google.com",
+  TMUS:  "t-mobile.com",
+  PLTR:  "palantir.com",
+  CSCO:  "cisco.com",
+  LIN:   "linde.com",
+  ISRG:  "intuitivesurgical.com",
+  PEP:   "pepsico.com",
+  INTU:  "intuit.com",
+  BKNG:  "bookingholdings.com",
+  ADBE:  "adobe.com",
+  AMD:   "amd.com",
+  AMGN:  "amgen.com",
+  QCOM:  "qualcomm.com",
+  TXN:   "ti.com",
+  HON:   "honeywell.com",
+  GILD:  "gilead.com",
+  VRTX:  "vrtx.com",
+  CMCSA: "comcast.com",
+  PANW:  "paloaltonetworks.com",
+  ADP:   "adp.com",
+  AMAT:  "appliedmaterials.com",
+  MELI:  "mercadolibre.com",
+  CRWD:  "crowdstrike.com",
+  ADI:   "analog.com",
+  SBUX:  "starbucks.com",
+  LRCX:  "lamresearch.com",
+  MSTR:  "microstrategy.com",
+  KLAC:  "kla.com",
+  MDLZ:  "mondelezinternational.com",
+  MU:    "micron.com",
+  INTC:  "intel.com",
+  APP:   "applovin.com",
+  CTAS:  "cintas.com",
+  CDNS:  "cadence.com",
+  ORLY:  "oreillyauto.com",
+  FTNT:  "fortinet.com",
+  DASH:  "doordash.com",
+  CEG:   "constellation.com",
+  SNPS:  "synopsys.com",
+  PDD:   "pinduoduo.com"
+};
+
+function Dashboard() {
+  const [stocks, setStocks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [chartData, setChartData] = useState([]);
+  const [chartPeriod, setChartPeriod] = useState("1d");
+  const [selectedSymbol, setSelectedSymbol] = useState("AAPL");
+  const [chartDataCache, setChartDataCache] = useState({});
+  const [socket, setSocket] = useState(null);
+  const [connected, setConnected] = useState(false);
+  const [marketStatus, setMarketStatus] = useState({ market_open: false, status: "" });
+  const [uiPrefs, setUiPrefs] = useState(() => ({ theme: 'dark', compact: false }));
+  // Function to update stock price and calculate change
+  const updateStock = (symbol, price) => {
+    setStocks(prev => {
+      // Find the stock we need to update
+      const stockIndex = prev.findIndex(stock => stock.symbol === symbol);
+      
+      // If we don't have this stock, ignore the update
+      if (stockIndex === -1) return prev;
+      
+      // Make a copy of the stocks array
+      const newStocks = [...prev];
+      const stock = newStocks[stockIndex];
+      
+      // Calculate the percentage change
+      const oldPrice = stock.price;
+      const changePct = ((price - oldPrice) / oldPrice) * 100;
+      
+      // Update the stock
+      newStocks[stockIndex] = {
+        ...stock,
+        price: price,
+        change: changePct,
+        // Add a visual indicator for recent updates
+        recentlyUpdated: true
+      };
+      
+      // Clear the 'recentlyUpdated' flag after a short delay
+      setTimeout(() => {
+        setStocks(current => 
+          current.map(s => 
+            s.symbol === symbol ? { ...s, recentlyUpdated: false } : s
+          )
+        );
+      }, 2000);
+      
+      return newStocks;
+    });
+  };
+
+  const formatNumber = (value, digits = 2) =>
+    Number.isFinite(value) ? value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '0.00';
+  const formatCompact = (value) => new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value || 0);
+
+  // Fetch initial stock data from API
+  useEffect(() => {
+    const fetchStocks = async () => {
+      try {
+        const snapshot = await apiGet("/api/snapshot");
+const transformedData = Object.entries(snapshot).map(([symbol, info]) => ({
+  symbol,
+  name: info.name || symbol,
+  price: info.price || 0,
+  change: info.change || 0,
+  changeAbs: info.change_abs || 0,
+  volume: info.volume || 0,
+  prevVolume: info.prevVolume || 0,
+  rvol: info.rvol || 0,
+  marketCap: info.market_cap || 0,
+  yearHigh: info.year_high || 0,
+  yearLow: info.year_low || 0,
+  logo: symbolToDomain[symbol]
+    ? `https://logo.clearbit.com/${symbolToDomain[symbol]}?size=48`
+    : null,
+}));
+setStocks(transformedData);
+        
+        // If we don't have an already selected symbol but we got stocks,
+        // select the first one by default
+        if (transformedData.length > 0 && !selectedSymbol) {
+          setSelectedSymbol(transformedData[0].symbol);
+        }
+        
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching stock data:", error);
+        
+        // If API fails, use empty array but mark as loaded
+        setStocks([]);
+        setLoading(false);
+      }
+    };
+    
+    fetchStocks();
+    // Also fetch initial market status and start a light poll
+    const fetchStatus = async () => {
+      try {
+        const status = await apiGet("/api/market-status");
+        setMarketStatus(status);
+      } catch (e) {
+        // ignore
+      }
+    };
+    fetchStatus();
+    const id = setInterval(fetchStatus, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const socketRef = useRef(null);
+  
+  useEffect(() => {
+    if (loading) return;            // don’t attach until initial stocks are loaded
+    if (socketRef.current) return;  // prevent duplicate sockets
+  
+    const s = io(API_URL, {
+      // Allow default transport negotiation (polling -> websocket upgrade)
+      autoConnect: true,
+      withCredentials: true,
+    });
+  
+    socketRef.current = s;
+  
+    s.on("connect", () => {
+      console.log("Socket.IO connected!");
+      setConnected(true);
+    });
+  
+    s.on("stock_update", (payload) => {
+      // server sends: { data: { AAPL:{price,change,...}, MSFT:{...} } }
+      const snap = payload?.data ?? payload;
+  
+      if (snap && typeof snap === "object" && !Array.isArray(snap)) {
+        setStocks(prev =>
+          prev.map(s => {
+            const upd = snap[s.symbol];
+            if (!upd) return s;
+            const nextPrice = typeof upd === "number" ? upd : (upd.price ?? s.price);
+            const nextChange = typeof upd === "number"
+              ? (s.price ? ((nextPrice - s.price)/s.price)*100 : s.change)
+              : (upd.change ?? s.change);
+            return { ...s, price: nextPrice, change: nextChange, recentlyUpdated: true };
+          })
+        );
+  
+        // remove highlight
+        setTimeout(() => {
+          setStocks(cur => cur.map(s => ({ ...s, recentlyUpdated: false })));
+        }, 1200);
+      }
+    });
+  
+    s.on("disconnect", () => {
+      console.log("Socket.IO disconnected.");
+      setConnected(false);
+    });
+  
+    s.on("error", (err) => {
+      console.error("Socket.IO error:", err);
+    });
+  
+    return () => {
+      s.off();
+      s.disconnect();
+      socketRef.current = null;
+    };
+  }, [loading]);
+  
+  // Fetch chart data when selected symbol or period changes
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        // Show loading state
+        setLoading(true);
+        
+        // Check if we already have this data cached client-side
+        const cacheKey = `${selectedSymbol}-${chartPeriod}`;
+        if (chartDataCache[cacheKey]) {
+          // Use cached data if available
+          setChartData(chartDataCache[cacheKey]);
+          setLoading(false);
+          return;
+        }
+        
+        // Fetch from API if not cached
+        const history = await apiGet(`/api/history/${selectedSymbol}/${chartPeriod}`);
+        const { data } = history;
+        
+        // Format the data
+        const formattedData = (Array.isArray(data) ? data : []).map((entry) => ({
+          time: new Date((typeof entry.time === "number" ? entry.time * 1000 : Date.parse(entry.time))).toLocaleString(),
+          value: entry.close ?? entry.value ?? 0,
+        }));
+        
+        // Update the state
+        setChartData(formattedData);
+        
+        // Cache the result client-side
+        setChartDataCache(prev => ({
+          ...prev,
+          [cacheKey]: formattedData
+        }));
+        
+      } catch (error) {
+        console.error("Error fetching history:", error);
+        // For demo purposes, create some mock data if API fails
+        const mockData = Array.from({ length: 24 }, (_, i) => ({
+          time: new Date(Date.now() - i * 3600000).toLocaleString(),
+          value: 150 + Math.random() * 10
+        })).reverse();
+        
+        setChartData(mockData);
+      } finally {
+        setLoading(false);
+      }
+    };
+  
+    if (selectedSymbol) {
+      fetchHistory();
+    }
+  }, [selectedSymbol, chartPeriod]);
+
+  // React Query for portfolio data
+  const {
+    data: portfolio,
+    isLoading: portfolioLoading,
+    error: portfolioError
+  } = useQuery({
+    queryKey: ['portfolio'],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const data = await apiGet('/api/portfolio', { headers });
+      if (data.error) throw new Error(data.error);
+      return data;
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    cacheTime: 15 * 60 * 1000, // 15 minutes
+    refetchOnWindowFocus: false,
+  });
+
+  // Use portfolio data from query, fallback to state for initial render
+  const portfolioData = portfolio ? {
+    totalValue: portfolio.totalValue || 0,
+    dailyProfit: portfolio.dailyProfit || 0,
+    totalValueChange: 0, // Compute if backend provides
+    dailyProfitChange: 0, // Compute if backend provides
+  } : {
+    totalValue: 0,
+    dailyProfit: 0,
+    totalValueChange: 0,
+    dailyProfitChange: 0,
+  };
+
+  if (loading || portfolioLoading) {
+    return (
+      <div className="flex-1 p-8 overflow-auto flex items-center justify-center">
+        <div className="text-blue-400 animate-pulse">
+          Loading market data...
+        </div>
+      </div>
+    );
+  }
+
+  if (portfolioError) {
+    return (
+      <div className="flex-1 p-8 overflow-auto flex items-center justify-center">
+        <div className="text-red-400">
+          {portfolioError.message || 'Failed to load portfolio data.'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+        {[
+          {
+            title: "Portfolio Value",
+            value: `$${portfolioData.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            change: `${portfolioData.totalValueChange >= 0 ? '+' : ''}${portfolioData.totalValueChange.toFixed(2)}%`,
+            period: "vs last week",
+            icon: <LineChart className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />,
+          },
+          {
+            title: "Today's Profit/Loss",
+            value: `${portfolioData.dailyProfit >= 0 ? '+' : ''}$${portfolioData.dailyProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            change: `${portfolioData.dailyProfitChange >= 0 ? '+' : ''}${portfolioData.dailyProfitChange.toFixed(2)}%`,
+            period: "today",
+            icon: <Wallet className="w-5 h-5 sm:w-6 sm:h-6 text-green-500" />,
+          },
+          {
+            title: "Total Investment",
+            value: "$89,240.85",
+            change: "+4.3%",
+            period: "vs last month",
+            icon: <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />,
+          },
+        ].map((stat, index) => (
+          <div
+            key={index}
+            className="rounded-xl p-4 sm:p-6 bg-white/5 backdrop-blur-md border border-white/10 transition-transform hover:-translate-y-1"
+          >
+            <div className="flex justify-between items-start mb-3 sm:mb-4">
+              <div className="p-2 bg-white/5 rounded-lg">{stat.icon}</div>
+              <span className="text-sm text-gray-400">
+                {connected ? (
+                  <span className="flex items-center">
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span> 
+                    Live
+                  </span>
+                ) : (
+                  "Updated just now"
+                )}
+              </span>
+            </div>
+            <h3 className="text-base sm:text-lg font-medium mb-1">{stat.title}</h3>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-xl sm:text-2xl font-bold ${stat.isPositive ? '' : 'text-red-500'}`}>{stat.value}</span>
+              <span className={stat.isPositive ? 'text-green-500 text-xs sm:text-sm' : 'text-red-500 text-xs sm:text-sm'}>{stat.change}</span>
+            </div>
+            <span className="text-xs sm:text-sm text-gray-400">{stat.period}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        {/* Market Activity Chart - Updated with better stock selector */}
+        <div className="rounded-xl p-6 col-span-2 bg-white/5 backdrop-blur-md border border-white/10">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-4">
+              <h2 className="text-xl font-bold">Market Activity</h2>
+              <select
+                value={selectedSymbol}
+                onChange={(e) => setSelectedSymbol(e.target.value)}
+                className="stock-selector w-full sm:w-auto bg-white/5 rounded-lg px-3 py-1.5 sm:py-2 text-sm sm:text-base"
+                style={{
+                  WebkitAppearance: "none",
+                  MozAppearance: "none",
+                  appearance: "none",
+                  backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "right 0.5rem center",
+                  backgroundSize: "1em",
+                  paddingRight: "2.5rem",
+                }}
+              >
+                {stocks.map((stock) => (
+                  <option key={stock.symbol} value={stock.symbol} className="bg-gray-800">
+                    {stock.symbol} - {stock.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex space-x-2 mb-6">
+            {["1d", "5d", "1mo", "3mo", "6mo"].map((range) => (
+              <button
+                key={range}
+                onClick={() => setChartPeriod(range)}
+                className="px-2.5 sm:px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs sm:text-sm transition-colors"
+              >
+                {range}
+              </button>
+            ))}
+          </div>
+          <div className="h-[300px]">
+          {chartData.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-blue-400 animate-pulse">Loading chart data...</div>
+            </div>
+          ):(
+            <ResponsiveContainer>
+              <AreaChart data={chartData}>
+                <XAxis dataKey="time" tick={{ fill: "#6B7280" }} />
+                <YAxis domain={["auto", "auto"]} tick={{ fill: "#6B7280" }} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "rgba(17,24,39,0.9)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                  }}
+                  formatter={(v) => [`$${formatNumber(v)}`, 'Close']}
+                />
+                <Area
+                  dataKey="value"
+                  stroke="#3B82F6"
+                  fill="rgba(59, 130, 246, 0.1)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+          </div>
+        </div>
+
+        {/* Top Movers */}
+        <div className="rounded-xl p-4 sm:p-6 bg-white/5 backdrop-blur-md border border-white/10">
+          <h2 className="text-lg sm:text-xl font-bold mb-4">Top Movers</h2>
+          <div className="space-y-3 sm:space-y-4">
+            {[...stocks]
+              .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))
+              .slice(0, 3)
+              .map((stock) => (
+                <div
+                  key={stock.symbol}
+                  className={`
+                    flex items-center justify-between p-3 bg-white/5 rounded-lg
+                    ${stock.recentlyUpdated ? 'animate-pulse bg-blue-900/30' : ''}
+                  `}
+                >
+                  <div>
+                    <div className="font-medium text-sm sm:text-base">{stock.symbol}</div>
+                    <div className="text-xs sm:text-sm text-gray-400">{stock.name}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium">${formatNumber(stock.price)}</div>
+                    <div
+                      className={`
+                        text-xs sm:text-sm flex items-center gap-1
+                        ${stock.change >= 0 ? "text-green-500" : "text-red-500"}
+                      `}
+                    >
+                      {stock.change >= 0 ? (
+                        <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                      )}
+                      {Math.abs(stock.change).toFixed(2)}%
+                    </div>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Watchlist Table - Updated with real data */}
+      <div className="rounded-xl p-6 mt-6 bg-white/5 backdrop-blur-md border border-white/10">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-100">Watchlist</h2>
+          <div className="flex items-center gap-4 text-sm">
+            <div className={`flex items-center ${marketStatus.market_open ? 'text-green-400' : 'text-yellow-400'}`}>
+              <span className={`inline-block w-2 h-2 rounded-full mr-2 ${marketStatus.market_open ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
+              {marketStatus.market_open ? 'Market Open' : 'Market Closed'}
+            </div>
+            {connected && (
+              <div className="flex items-center text-green-400">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
+                Live
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-gray-400 border-b border-white/10">
+                <th className="pb-4 text-left">Symbol</th>
+                <th className="pb-4 text-left">Name</th>
+                <th className="pb-4 text-right">Price</th>
+                <th className="pb-4 text-right">Day Change</th>
+                <th className="pb-4 text-right">Market Cap</th>
+                <th className="pb-4 text-right">52W Range</th>
+                <th className="pb-4 text-right">RVOL (30d)</th>
+                <th className="pb-4 text-right">Trade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stocks.map((stock) => (
+                <tr
+                  key={stock.symbol}
+                  className={`
+                    border-b border-white/5 hover:bg-white/5 transition-colors
+                    ${stock.recentlyUpdated ? 'bg-blue-900/20' : ''}
+                  `}
+                >
+                  <td className="py-4 font-medium flex items-center">
+                    {stock.logo ? (
+                      <img
+                        src={stock.logo}
+                        alt={stock.symbol}
+                        className="table-icon"
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="table-icon bg-blue-500/10 flex items-center justify-center">
+                        <LineChart className="w-4 h-4 text-blue-400" />
+                      </div>
+                    )}
+                    {stock.symbol}
+                  </td>
+                  <td className="py-4 text-gray-400">{stock.name}</td>
+                  <td className={`py-4 text-right ${stock.recentlyUpdated ? 'text-white font-bold' : ''}`}>
+                    ${formatNumber(stock.price)}
+                  </td>
+                  <td className={`py-4 text-right ${stock.change >= 0 ? "text-green-500" : "text-red-500"}`}>
+                    {stock.change >= 0 ? "+" : ""}{Math.abs(stock.change || 0).toFixed(2)}% ({stock.changeAbs >= 0 ? '+' : ''}${formatNumber(Math.abs(stock.changeAbs))})
+                  </td>
+                  <td className="py-4 text-right text-gray-400">
+                    {formatCompact(stock.marketCap)}
+                  </td>
+                  <td className="py-4 text-right text-gray-400">
+                    ${formatNumber(stock.yearLow, 2)} - ${formatNumber(stock.yearHigh, 2)}
+                  </td>
+                  <td className={`py-4 text-right ${stock.rvol >= 1 ? 'text-green-500' : 'text-gray-400'}`}>
+                    {formatNumber(stock.rvol, 2)}x
+                  </td>
+                  <td className="py-4 text-right">
+                    <Link
+                      to={`/trade/${stock.symbol}?currentValue=${stock.price}&changeValue=${stock.change}&currentPercent=${stock.change}`}
+                      className="px-4 py-1 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                    >
+                      Trade
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default Dashboard;
